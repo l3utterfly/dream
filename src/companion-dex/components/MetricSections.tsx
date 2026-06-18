@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { CountNum } from "./CountNum";
 
@@ -116,16 +116,31 @@ interface VitalProps {
   icon: ReactNode;
   label: string;
   value: number;
+  onTap?: () => void;
 }
 
-export function Vital({ icon, label, value }: VitalProps) {
+export function Vital({ icon, label, value, onTap }: VitalProps) {
   const r = 22;
   const circ = 2 * Math.PI * r;
+  const progress = Math.max(0, Math.min(value, 100));
+  const [bursts, setBursts] = useState<number[]>([]);
+  const nextBurst = useRef(0);
 
-  return (
-    <div style={{ flex: 1, textAlign: "center" }}>
-      <div style={{ position: "relative", width: 58, height: 58, margin: "0 auto 8px" }}>
-        <svg width="58" height="58" style={{ transform: "rotate(-90deg)" }}>
+  const handleTap = () => {
+    onTap?.();
+
+    const id = nextBurst.current;
+    nextBurst.current += 1;
+    setBursts((current) => [...current, id]);
+    window.setTimeout(() => {
+      setBursts((current) => current.filter((burst) => burst !== id));
+    }, 700);
+  };
+
+  const content = (
+    <>
+      <div className="cd-vital-ring" style={{ position: "relative", width: 58, height: 58, margin: "0 auto 8px" }}>
+        <svg width="58" height="58" style={{ transform: "rotate(-90deg)" }} aria-hidden>
           <circle cx="29" cy="29" r={r} fill="none" stroke="var(--track)" strokeWidth="6" />
           <circle
             cx="29"
@@ -136,13 +151,35 @@ export function Vital({ icon, label, value }: VitalProps) {
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={circ}
-            strokeDashoffset={circ * (1 - value / 100)}
+            strokeDashoffset={circ * (1 - progress / 100)}
             style={{ transition: "stroke-dashoffset .8s cubic-bezier(.2,.8,.2,1), stroke .5s" }}
           />
         </svg>
         <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--deep)", transition: "color .5s" }}>{icon}</div>
+        {bursts.map((burst) => (
+          <span key={burst} className="cd-vital-burst" aria-hidden>
+            {icon}
+          </span>
+        ))}
       </div>
       <div style={{ fontSize: 11, color: "var(--ink-2)", fontWeight: 600 }}>{label}</div>
+      <div style={{ marginTop: 3, fontFamily: "var(--mono)", fontSize: 12, color: "var(--deep)", fontWeight: 700, transition: "color .5s" }}>
+        <CountNum value={value} />
+      </div>
+    </>
+  );
+
+  if (onTap) {
+    return (
+      <button type="button" className="cd-vital-button" onClick={handleTap} aria-label={`${label}: ${value}`}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, textAlign: "center" }}>
+      {content}
     </div>
   );
 }

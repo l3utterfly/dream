@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Brain, Clock, Coffee, Cookie, Heart, Laugh, ListChecks, MessageCircle, Quote, Scale, Smile, Sparkles, TrendingDown, TrendingUp, Users, Zap } from "lucide-react";
+import { Brain, Clock, Coffee, Cookie, Hand, Heart, Laugh, ListChecks, MessageCircle, Quote, Scale, Smile, Sparkles, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { MOOD_LABEL } from "../data";
 import type { Character, Theme } from "../types";
 import { Avatar } from "./Avatar";
@@ -14,13 +14,26 @@ interface StatsPanelProps {
 
 export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
   const [mounted, setMounted] = useState(false);
+  const [vitalTaps, setVitalTaps] = useState({
+    energy: 0,
+    fed: 0,
+    social: 0,
+  });
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
+  useEffect(() => {
+    setVitalTaps({ energy: 0, fed: 0, social: 0 });
+  }, [character.id]);
+
   const v = (n: number) => (mounted ? n : 0);
+  const vitalValue = (key: keyof Character["vitals"]) => v(character.vitals[key] + vitalTaps[key]);
+  const tapVital = (key: keyof Character["vitals"]) => {
+    setVitalTaps((current) => ({ ...current, [key]: current[key] + 1 }));
+  };
   const balanceLeft = 50 + character.stats.balance / 2;
   const trend = character.bond?.trend;
   const trendTimespan = trend
@@ -101,9 +114,9 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
 
       <Block icon={<Sparkles size={15} />} title="How they're doing">
         <div style={{ display: "flex", gap: 8 }}>
-          <Vital icon={<Zap size={18} />} label="Energy" value={v(character.vitals.energy)} />
-          <Vital icon={<Cookie size={18} />} label="Fed" value={v(character.vitals.fed)} />
-          <Vital icon={<Users size={18} />} label="Social" value={v(character.vitals.social)} />
+          <Vital icon={<Zap size={18} />} label="Poke" value={vitalValue("energy")} onTap={() => tapVital("energy")} />
+          <Vital icon={<Cookie size={18} />} label="Feed" value={vitalValue("fed")} onTap={() => tapVital("fed")} />
+          <Vital icon={<Hand size={18} />} label="Wave" value={vitalValue("social")} onTap={() => tapVital("social")} />
         </div>
       </Block>
 

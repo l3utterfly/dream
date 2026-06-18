@@ -149,6 +149,48 @@
   animation: cdSpin 0.8s linear infinite;
 }
 
+.cd-vital-button {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cd-vital-button .cd-vital-ring {
+  border-radius: 50%;
+  transition: transform 0.18s ease;
+}
+
+.cd-vital-button:active .cd-vital-ring {
+  transform: scale(0.94);
+}
+
+.cd-vital-button:focus-visible {
+  outline: none;
+}
+
+.cd-vital-button:focus-visible .cd-vital-ring {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.cd-vital-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  color: var(--primary);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: cdVitalRise 0.7s ease-out forwards;
+}
+
 .cd-arrow {
   position: fixed;
   top: 42%;
@@ -258,13 +300,30 @@
   }
 }
 
+@keyframes cdVitalRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.75);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -128%) scale(1.1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cd-float,
   .cd-mood-dot,
   .cd-zzz,
   .cd-fade,
   .cd-bg-media,
-  .cd-section-spinner {
+  .cd-section-spinner,
+  .cd-vital-burst {
     animation: none !important;
   }
 
