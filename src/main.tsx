@@ -10,7 +10,7 @@ if (import.meta.env.DEV) {
     characters: MOCK_LAYLA_CHARACTERS,
     respond: (messages) =>
       `You said: ${messages.at(-1)?.content}. Mock response from Layla.`,
-    latencyMs: 1000,
+    latencyMs: 100,
     tokenDelayMs: 300,
   });
 }

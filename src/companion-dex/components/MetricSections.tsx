@@ -31,6 +31,19 @@ export function Block({ icon, title, children }: BlockProps) {
   );
 }
 
+interface SectionSpinnerProps {
+  label: string;
+}
+
+export function SectionSpinner({ label }: SectionSpinnerProps) {
+  return (
+    <div className="cd-section-loading" role="status" aria-live="polite">
+      <span className="cd-section-spinner" aria-hidden />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 interface BarProps {
   label: string;
   value: number;

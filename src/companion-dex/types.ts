@@ -1,4 +1,5 @@
 import type { LaylaChatHistoryEntry } from "@layla-network/sdk";
+import type { BondResult } from "./libs/computeBond";
 
 export type Mood = "happy" | "content" | "excited" | "sad" | "lonely" | "sleepy";
 export type Shape = "sun" | "cat" | "drop" | "moon";
@@ -29,6 +30,9 @@ export interface Character {
   chatHistory: LaylaChatHistoryEntry[];
   isChatHistoryLoaded: boolean;
   chatHistoryError?: string;
+  bond?: BondResult;
+  isBondLoading: boolean;
+  bondError?: string;
   vitals: {
     energy: number;
     fed: number;

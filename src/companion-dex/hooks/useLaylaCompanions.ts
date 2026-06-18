@@ -7,9 +7,10 @@ import LaylaSDK, {
   type LaylaCharacter,
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
+import { computeBond, type ScoredSentence } from "../libs/computeBond";
 import type { Character } from "../types";
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 1;
 const CHAT_HISTORY_LIMIT = 50;
 const layla = new LaylaSDK();
 
@@ -41,6 +42,18 @@ function shortText(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1).trim()}...` : value;
 }
 
+function splitSentences(value: string | null) {
+  if (!value) return [];
+
+  return (
+    value
+      .replace(/\s+/g, " ")
+      .match(/[^.!?。！？\n]+(?:[.!?。！？]+|$)/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) ?? []
+  );
+}
+
 async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
   const { sessions } = await layla.chat.getChatSessions(characterId, 0, CHAT_HISTORY_LIMIT, {
     signal,
@@ -69,6 +82,28 @@ async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
   };
 }
 
+async function computeBondFromChatHistory(chatHistory: LaylaChatHistoryEntry[], signal: AbortSignal) {
+  const scoredSentences: ScoredSentence[] = [];
+
+  for (const entry of chatHistory) {
+    const sentences = splitSentences(entry.content);
+
+    for (const sentence of sentences) {
+      const sentimentValue = await layla.classifier.getSentiment(sentence, {
+        signal,
+      });
+
+      scoredSentences.push({
+        sentence,
+        timestamp: entry.timestamp,
+        sentimentValue,
+      });
+    }
+  }
+
+  return computeBond(scoredSentences);
+}
+
 function toCompanion(character: LaylaCharacter, index: number, image: string | null): Character {
   const profile = DISPLAY_PROFILES[index % DISPLAY_PROFILES.length];
   const data = character.data.data;
@@ -93,6 +128,7 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     lastChat: "just now",
     chatHistory: [],
     isChatHistoryLoaded: false,
+    isBondLoading: true,
     remembers: [
       { fact: shortText(description, 36), fresh: true },
       { fact: shortText(personality, 36) },
@@ -188,20 +224,46 @@ export function useLaylaCompanions() {
       chatHistoryAbortControllersRef.current.add(controller);
 
       void loadRecentChatHistory(character.id, controller.signal)
-        .then(({ latestChatSessionId, chatHistory }) => {
-          setCompanions((current) =>
-            current.map((companion) =>
-              companion.id === character.id
-                ? {
-                    ...companion,
-                    latestChatSessionId,
-                    chatHistory,
-                    isChatHistoryLoaded: true,
-                    chatHistoryError: undefined,
-                  }
-                : companion,
-            ),
-          );
+        .then(async ({ latestChatSessionId, chatHistory }) => {
+          try {
+            const bond = await computeBondFromChatHistory(chatHistory, controller.signal);
+            console.log(`Computed bond for ${character.id}:`, bond);
+
+            setCompanions((current) =>
+              current.map((companion) =>
+                companion.id === character.id
+                  ? {
+                      ...companion,
+                      latestChatSessionId,
+                      chatHistory,
+                      isChatHistoryLoaded: true,
+                      chatHistoryError: undefined,
+                      bond,
+                      isBondLoading: false,
+                      bondError: undefined,
+                    }
+                  : companion,
+              ),
+            );
+          } catch (bondError) {
+            if (bondError instanceof LaylaAbortError) return;
+
+            setCompanions((current) =>
+              current.map((companion) =>
+                companion.id === character.id
+                  ? {
+                      ...companion,
+                      latestChatSessionId,
+                      chatHistory,
+                      isChatHistoryLoaded: true,
+                      chatHistoryError: undefined,
+                      isBondLoading: false,
+                      bondError: messageFromError(bondError),
+                    }
+                  : companion,
+              ),
+            );
+          }
         })
         .catch((historyError) => {
           if (historyError instanceof LaylaAbortError) return;
@@ -213,6 +275,8 @@ export function useLaylaCompanions() {
                     ...companion,
                     isChatHistoryLoaded: true,
                     chatHistoryError: messageFromError(historyError),
+                    isBondLoading: false,
+                    bondError: messageFromError(historyError),
                   }
                 : companion,
             ),
