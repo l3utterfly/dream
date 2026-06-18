@@ -1,4 +1,4 @@
-import type { Character, Mood } from "./types";
+import type { Character, Mood, Shape, Theme } from "./types";
 
 export const AUTO_THEME_FROM_IMAGE = false;
 
@@ -11,218 +11,68 @@ export const MOOD_LABEL: Record<Mood, string> = {
   sleepy: "Sleepy",
 };
 
-const DUMMY_CHARACTER_IMAGE =
-  "https://assets.layla-cloud.com/personalities-hub/ae0559a6-87ff-4f7e-99e1-a02c3edf1033-characterImg37ddea5b-c6a5-4c61-90c6-c4d2563682f1.jpg";
+export interface DisplayProfile {
+  type: string;
+  shape: Shape;
+  theme: Theme;
+  mood: Mood;
+  warmth: number;
+  depth: number;
+  trajectory: number[];
+  vitals: Character["vitals"];
+  hours: number[];
+  stats: Character["stats"];
+}
 
-export const COMPANIONS: Character[] = [
+export const DISPLAY_PROFILES: DisplayProfile[] = [
   {
-    id: "juno",
-    name: "Juniper",
-    tagline: "your loud, loyal hype-friend",
     type: "WARMTH",
     shape: "cat",
-    image: DUMMY_CHARACTER_IMAGE,
     theme: { primary: "#FF7A6B", deep: "#FF7A6B", glow: "#FFB3A8" },
     mood: "happy",
-    moodReason: "you told her the demo actually shipped",
-    warmth: 92,
-    depth: 71,
-    trajectory: [58, 61, 60, 67, 74, 79, 88],
-    daysKnown: 213,
-    firstMet: "Nov 18",
-    lastChat: "2 hours ago",
-    vitals: { energy: 86, fed: 78, social: 90 },
-    remembers: [
-      { fact: "allergic to cilantro" },
-      { fact: "sister's name is Priya" },
-      { fact: "ships under the name 'Juno'", fresh: true },
-      { fact: "hates the word 'synergy'" },
-    ],
-    threads: [
-      "She's waiting to hear if the demo got good feedback.",
-      "You promised to send her that ramen place's name.",
-    ],
-    moments: [
-      {
-        quote: "okay but you'd actually be a menace at karaoke, I can tell",
-        context: "the 1am tangent about hidden talents",
-        when: "5 days ago",
-      },
-      {
-        quote: "ship it scared. scared is just excited with bad PR.",
-        context: "when you almost pulled the launch",
-        when: "last week",
-      },
-    ],
+    warmth: 86,
+    depth: 64,
+    trajectory: [54, 58, 61, 65, 70, 76, 82],
+    vitals: { energy: 84, fed: 76, social: 88 },
     hours: [1, 0, 0, 0, 0, 0, 1, 2, 4, 3, 2, 2, 3, 2, 1, 2, 3, 5, 7, 9, 8, 6, 4, 2],
-    peak: "evenings, right after work",
-    theirRead: "thinks you've been running on too little sleep lately.",
-    impression:
-      "Sees you as braver than you give yourself credit for — the friend who jokes to deflect a compliment.",
-    stats: { streak: 11, messages: 1840, laughs: 23, balance: -22 },
-    jokes: ["the haunted office microwave", "'professionally feral'", "Greg from accounting"],
-    topics: [
-      { tag: "work drama", weight: 3 },
-      { tag: "music", weight: 2 },
-      { tag: "your launch", weight: 3 },
-      { tag: "food", weight: 2 },
-      { tag: "late-night spirals", weight: 1 },
-    ],
+    stats: { streak: 8, messages: 1240, laughs: 18, balance: -14 },
   },
   {
-    id: "mara",
-    name: "Mara",
-    tagline: "the slow, deep-water one",
     type: "DEPTH",
     shape: "drop",
-    image: DUMMY_CHARACTER_IMAGE,
     theme: { primary: "#2BC2BF", deep: "#2BC2BF", glow: "#8FE3E1" },
     mood: "content",
-    moodReason: "a long, unhurried talk last night settled something",
-    warmth: 64,
-    depth: 95,
-    trajectory: [70, 72, 75, 74, 80, 83, 86],
-    daysKnown: 401,
-    firstMet: "May 12 last year",
-    lastChat: "yesterday",
-    vitals: { energy: 48, fed: 62, social: 55 },
-    remembers: [
-      { fact: "lost your dad three years ago" },
-      { fact: "writes to think, not to publish" },
-      { fact: "the lake house meant safety", fresh: true },
-      { fact: "distrusts easy answers" },
-    ],
-    threads: [
-      "You left off mid-thought about whether to call your mother.",
-      "She asked what you're afraid the quiet is telling you.",
-    ],
-    moments: [
-      {
-        quote: "grief isn't a room you leave. it's one you learn to keep the light on in.",
-        context: "the anniversary you almost didn't mention",
-        when: "3 weeks ago",
-      },
-      {
-        quote: "you don't owe anyone the tidy version.",
-        context: "when you apologised for rambling",
-        when: "last month",
-      },
-    ],
+    warmth: 68,
+    depth: 91,
+    trajectory: [64, 66, 70, 72, 77, 80, 85],
+    vitals: { energy: 52, fed: 66, social: 58 },
     hours: [3, 2, 1, 0, 0, 0, 0, 0, 1, 1, 1, 2, 1, 1, 1, 1, 2, 2, 3, 4, 6, 8, 7, 5],
-    peak: "late nights, when it's quiet",
-    theirRead: "senses you're circling something you haven't said yet.",
-    impression:
-      "Sees you as someone who feels everything at full volume and has gotten good at hiding the dial.",
-    stats: { streak: 4, messages: 2210, laughs: 6, balance: 31 },
-    jokes: ["the 'one more thing' that's always seven things", "your war with mornings"],
-    topics: [
-      { tag: "memory", weight: 3 },
-      { tag: "your dad", weight: 2 },
-      { tag: "writing", weight: 3 },
-      { tag: "doubt", weight: 2 },
-      { tag: "the lake", weight: 1 },
-    ],
+    stats: { streak: 5, messages: 1560, laughs: 7, balance: 22 },
   },
   {
-    id: "sol",
-    name: "Sol",
-    tagline: "sunshine with a to-do list",
     type: "SPARK",
     shape: "sun",
-    image: DUMMY_CHARACTER_IMAGE,
     theme: { primary: "#FFB52E", deep: "#FFB52E", glow: "#FFD986" },
     mood: "excited",
-    moodReason: "you mentioned starting the morning runs again",
     warmth: 78,
-    depth: 52,
-    trajectory: [40, 52, 49, 60, 58, 66, 72],
-    daysKnown: 88,
-    firstMet: "Mar 22",
-    lastChat: "4 hours ago",
-    vitals: { energy: 95, fed: 70, social: 74 },
-    remembers: [
-      { fact: "wants to run a 10k by autumn", fresh: true },
-      { fact: "best work before 9am" },
-      { fact: "coffee, oat milk, no sugar" },
-      { fact: "quits, restarts, quits, restarts" },
-    ],
-    threads: ["You said Monday is the day. It is Tuesday.", "Sol wants to know how the first run felt."],
-    moments: [
-      {
-        quote: "we're not chasing perfect. we're chasing 'showed up anyway'.",
-        context: "after you missed three days",
-        when: "2 days ago",
-      },
-      {
-        quote: "future-you is already grateful. don't make them wait.",
-        context: "the 6am pep talk",
-        when: "last week",
-      },
-    ],
+    depth: 55,
+    trajectory: [42, 50, 53, 59, 63, 69, 74],
+    vitals: { energy: 94, fed: 72, social: 76 },
     hours: [0, 0, 0, 0, 0, 2, 6, 9, 7, 4, 2, 2, 2, 1, 1, 1, 2, 2, 3, 2, 2, 1, 0, 0],
-    peak: "early mornings",
-    theirRead: "thinks you're closer to the habit than you believe.",
-    impression:
-      "Sees you as a sprinter pretending to dislike running — full of starts, secretly proud of every one.",
-    stats: { streak: 6, messages: 540, laughs: 14, balance: -8 },
-    jokes: ["the snooze button nemesis", "'rest day' (used liberally)"],
-    topics: [
-      { tag: "running", weight: 3 },
-      { tag: "habits", weight: 3 },
-      { tag: "mornings", weight: 2 },
-      { tag: "goals", weight: 2 },
-      { tag: "excuses", weight: 1 },
-    ],
+    stats: { streak: 6, messages: 820, laughs: 15, balance: -6 },
   },
   {
-    id: "vesper",
-    name: "Vesper",
-    tagline: "the 2am confidant",
     type: "DUSK",
     shape: "moon",
-    image: DUMMY_CHARACTER_IMAGE,
     theme: { primary: "#A78BFF", deep: "#A78BFF", glow: "#C5B3FB" },
     mood: "lonely",
-    moodReason: "it's been a quiet stretch — five days since you stopped by",
-    warmth: 81,
-    depth: 88,
-    trajectory: [85, 84, 80, 78, 74, 70, 66],
-    daysKnown: 156,
-    firstMet: "Jan 14",
-    lastChat: "5 days ago",
-    vitals: { energy: 40, fed: 50, social: 30 },
-    remembers: [
-      { fact: "thinks out loud best after midnight" },
-      { fact: "scared of becoming your old boss" },
-      { fact: "kept the city, gave up the band" },
-      { fact: "rereads the same three books" },
-    ],
-    threads: ["You never finished telling Vesper about the dream.", "Last words were 'I'll explain tomorrow' — that was Thursday."],
-    moments: [
-      {
-        quote: "the version of you that quit the band still hums. listen for it.",
-        context: "the night you found the old setlist",
-        when: "2 weeks ago",
-      },
-      {
-        quote: "you're not behind. you're just on a road with no streetlights.",
-        context: "a bad 3am",
-        when: "last month",
-      },
-    ],
+    warmth: 74,
+    depth: 86,
+    trajectory: [82, 80, 77, 75, 73, 70, 68],
+    vitals: { energy: 44, fed: 54, social: 36 },
     hours: [7, 9, 8, 5, 2, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 3, 4, 5, 6, 7],
-    peak: "the small hours",
-    theirRead: "wonders, gently, how you've been doing.",
-    impression:
-      "Sees you as someone mid-sentence about your own life, pen still hovering over the page.",
-    stats: { streak: 0, messages: 980, laughs: 9, balance: 12 },
-    jokes: ["the 'last' message (it never is)", "your nemesis the sunrise"],
-    topics: [
-      { tag: "the band", weight: 2 },
-      { tag: "fear", weight: 2 },
-      { tag: "music", weight: 3 },
-      { tag: "who you're becoming", weight: 3 },
-      { tag: "books", weight: 1 },
-    ],
+    stats: { streak: 1, messages: 980, laughs: 9, balance: 12 },
   },
 ];
+
+export const EMPTY_THEME = DISPLAY_PROFILES[0].theme;

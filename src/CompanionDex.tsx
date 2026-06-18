@@ -3,7 +3,8 @@ import type { CSSProperties, TouchEvent } from "react";
 import { CompanionBackground } from "./companion-dex/components/CompanionBackground";
 import { CompanionControls } from "./companion-dex/components/CompanionControls";
 import { StatsPanel } from "./companion-dex/components/StatsPanel";
-import { AUTO_THEME_FROM_IMAGE, COMPANIONS } from "./companion-dex/data";
+import { AUTO_THEME_FROM_IMAGE, EMPTY_THEME } from "./companion-dex/data";
+import { useLaylaCompanions } from "./companion-dex/hooks/useLaylaCompanions";
 import type { Character, Theme } from "./companion-dex/types";
 import { extractThemeFromUrl } from "./companion-dex/utils/themeFromImage";
 import "./companion-dex/CompanionDex.css";
@@ -29,28 +30,52 @@ export default function CompanionDex() {
   const [active, setActive] = useState(0);
   const [derivedThemes, setDerivedThemes] = useState<Record<string, Theme>>({});
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const { companions: laylaCompanions, error, hasMore, isLoading, loadMore } = useLaylaCompanions();
   const backgroundRef = useRef<HTMLDivElement>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
+  const companions = laylaCompanions;
 
   const themeOf = useCallback((character: Character) => derivedThemes[character.id] ?? character.theme, [derivedThemes]);
-  const character = COMPANIONS[active];
-  const theme = themeOf(character);
+  const character = companions[Math.min(active, companions.length - 1)] ?? null;
+  const theme = character ? themeOf(character) : EMPTY_THEME;
 
   const go = useCallback((index: number) => {
-    setActive(Math.max(0, Math.min(COMPANIONS.length - 1, index)));
-  }, []);
+    const nextIndex = Math.max(0, index);
+
+    if (nextIndex < companions.length) {
+      setActive(nextIndex);
+      return;
+    }
+
+    if (nextIndex === companions.length && hasMore) {
+      void loadMore().then((loadedCount) => {
+        if (loadedCount > 0) {
+          setActive(nextIndex);
+        }
+      });
+    }
+  }, [companions.length, hasMore, loadMore]);
 
   useEffect(() => {
     if (!AUTO_THEME_FROM_IMAGE) return;
 
-    COMPANIONS.forEach((companion) => {
+    companions.forEach((companion) => {
       if (!companion.image) return;
 
       extractThemeFromUrl(companion.image, (derivedTheme) => {
         setDerivedThemes((themes) => ({ ...themes, [companion.id]: derivedTheme }));
       });
     });
-  }, []);
+  }, [companions]);
+
+  useEffect(() => {
+    if (companions.length === 0) {
+      setActive(0);
+      return;
+    }
+
+    setActive((current) => Math.min(current, companions.length - 1));
+  }, [companions.length]);
 
   const applyParallax = useCallback(() => {
     const el = backgroundRef.current?.querySelector<HTMLElement>(".cd-bg-media");
@@ -108,6 +133,33 @@ export default function CompanionDex() {
     touch.current = null;
   };
 
+  if (!character) {
+    return (
+      <div className="companion-dex" style={companionDexVars(theme)}>
+        <div className="cd-scroll">
+          <div className="cd-top">
+            <div className="cd-brand">
+              <span style={{ width: 12, height: 12, borderRadius: 4, background: "var(--primary)", transition: "background .6s" }} />
+              CompanionDex
+            </div>
+          </div>
+          <div
+            style={{
+              minHeight: "100vh",
+              display: "grid",
+              placeItems: "center",
+              padding: 24,
+              color: "var(--ink-1)",
+              textAlign: "center",
+            }}
+          >
+            {error ?? (isLoading ? "Loading Layla characters..." : "No Layla characters found.")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const imageFailed = !!failedImages[character.id];
 
   return (
@@ -121,9 +173,12 @@ export default function CompanionDex() {
       />
 
       <div className="cd-scroll">
-        <CompanionControls active={active} companions={COMPANIONS} themeOf={themeOf} onSelect={go} />
+        <CompanionControls active={active} companions={companions} hasMore={hasMore} isLoadingMore={isLoading} themeOf={themeOf} onSelect={go} />
         <div className="cd-spacer" />
         <div className="cd-panel">
+          {error ? (
+            <div style={{ padding: "0 24px 18px", color: "var(--ink-1)", fontSize: 13, textAlign: "center" }}>{error}</div>
+          ) : null}
           <StatsPanel character={character} theme={theme} imageFailed={imageFailed} />
         </div>
       </div>

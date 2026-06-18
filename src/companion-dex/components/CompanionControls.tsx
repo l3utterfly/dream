@@ -4,11 +4,16 @@ import type { Character, Theme } from "../types";
 interface CompanionControlsProps {
   active: number;
   companions: Character[];
+  hasMore: boolean;
+  isLoadingMore: boolean;
   themeOf: (character: Character) => Theme;
   onSelect: (index: number) => void;
 }
 
-export function CompanionControls({ active, companions, themeOf, onSelect }: CompanionControlsProps) {
+export function CompanionControls({ active, companions, hasMore, isLoadingMore, themeOf, onSelect }: CompanionControlsProps) {
+  const isAtLastCompanion = active === companions.length - 1;
+  const nextDisabled = (isAtLastCompanion && !hasMore) || (isAtLastCompanion && isLoadingMore);
+
   return (
     <>
       <button
@@ -24,8 +29,8 @@ export function CompanionControls({ active, companions, themeOf, onSelect }: Com
         className="cd-arrow"
         style={{ right: "max(10px, calc(50% - 252px))" }}
         onClick={() => onSelect(active + 1)}
-        disabled={active === companions.length - 1}
-        aria-label="Next companion"
+        disabled={nextDisabled}
+        aria-label={isAtLastCompanion && hasMore ? "Load next companions" : "Next companion"}
       >
         <ChevronRight size={22} />
       </button>
