@@ -3,12 +3,14 @@ import LaylaSDK, {
   LaylaAbortError,
   LaylaBridgeUnavailableError,
   LaylaError,
+  type LaylaChatHistoryEntry,
   type LaylaCharacter,
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
 import type { Character } from "../types";
 
 const PAGE_SIZE = 5;
+const CHAT_HISTORY_LIMIT = 50;
 const layla = new LaylaSDK();
 
 function imageFromCharacterCard(character: LaylaCharacter) {
@@ -39,6 +41,34 @@ function shortText(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1).trim()}...` : value;
 }
 
+async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
+  const { sessions } = await layla.chat.getChatSessions(characterId, 0, CHAT_HISTORY_LIMIT, {
+    signal,
+  });
+  const latestChatSessionId = sessions[0]?.session_id;
+  const chatHistory: LaylaChatHistoryEntry[] = [];
+
+  for (const session of sessions) {
+    const remaining = CHAT_HISTORY_LIMIT - chatHistory.length;
+    if (remaining <= 0) break;
+
+    const sessionHistory = await layla.chat.getChatHistory(
+      session.session_id,
+      0,
+      remaining,
+      {
+        signal,
+      },
+    );
+    chatHistory.push(...sessionHistory);
+  }
+
+  return {
+    latestChatSessionId,
+    chatHistory,
+  };
+}
+
 function toCompanion(character: LaylaCharacter, index: number, image: string | null): Character {
   const profile = DISPLAY_PROFILES[index % DISPLAY_PROFILES.length];
   const data = character.data.data;
@@ -61,6 +91,8 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     daysKnown: 1,
     firstMet: "today",
     lastChat: "just now",
+    chatHistory: [],
+    isChatHistoryLoaded: false,
     remembers: [
       { fact: shortText(description, 36), fresh: true },
       { fact: shortText(personality, 36) },
@@ -114,6 +146,7 @@ export function useLaylaCompanions() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const imageAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const chatHistoryAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const isLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const offsetRef = useRef(0);
@@ -149,6 +182,48 @@ export function useLaylaCompanions() {
     });
   }, []);
 
+  const hydrateChatHistories = useCallback((characters: LaylaCharacter[]) => {
+    characters.forEach((character) => {
+      const controller = new AbortController();
+      chatHistoryAbortControllersRef.current.add(controller);
+
+      void loadRecentChatHistory(character.id, controller.signal)
+        .then(({ latestChatSessionId, chatHistory }) => {
+          setCompanions((current) =>
+            current.map((companion) =>
+              companion.id === character.id
+                ? {
+                    ...companion,
+                    latestChatSessionId,
+                    chatHistory,
+                    isChatHistoryLoaded: true,
+                    chatHistoryError: undefined,
+                  }
+                : companion,
+            ),
+          );
+        })
+        .catch((historyError) => {
+          if (historyError instanceof LaylaAbortError) return;
+
+          setCompanions((current) =>
+            current.map((companion) =>
+              companion.id === character.id
+                ? {
+                    ...companion,
+                    isChatHistoryLoaded: true,
+                    chatHistoryError: messageFromError(historyError),
+                  }
+                : companion,
+            ),
+          );
+        })
+        .finally(() => {
+          chatHistoryAbortControllersRef.current.delete(controller);
+        });
+    });
+  }, []);
+
   const loadMore = useCallback(async () => {
     if (isLoadingRef.current) {
       if (!abortRef.current?.signal.aborted) return 0;
@@ -179,6 +254,7 @@ export function useLaylaCompanions() {
       hasMoreRef.current = laylaCharacters.length === PAGE_SIZE;
       setHasMore(hasMoreRef.current);
       hydrateImages(laylaCharacters);
+      hydrateChatHistories(laylaCharacters);
 
       return nextCompanions.length;
     } catch (loadError) {
@@ -194,15 +270,19 @@ export function useLaylaCompanions() {
         setIsLoading(false);
       }
     }
-  }, [hydrateImages]);
+  }, [hydrateChatHistories, hydrateImages]);
 
   useEffect(() => {
     void loadMore();
+    const imageAbortControllers = imageAbortControllersRef.current;
+    const chatHistoryAbortControllers = chatHistoryAbortControllersRef.current;
 
     return () => {
       abortRef.current?.abort();
-      imageAbortControllersRef.current.forEach((controller) => controller.abort());
-      imageAbortControllersRef.current.clear();
+      imageAbortControllers.forEach((controller) => controller.abort());
+      imageAbortControllers.clear();
+      chatHistoryAbortControllers.forEach((controller) => controller.abort());
+      chatHistoryAbortControllers.clear();
     };
   }, [loadMore]);
 

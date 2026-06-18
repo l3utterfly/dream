@@ -1,3 +1,5 @@
+import type { LaylaChatHistoryEntry } from "@layla-network/sdk";
+
 export type Mood = "happy" | "content" | "excited" | "sad" | "lonely" | "sleepy";
 export type Shape = "sun" | "cat" | "drop" | "moon";
 
@@ -23,6 +25,10 @@ export interface Character {
   daysKnown: number;
   firstMet: string;
   lastChat: string;
+  latestChatSessionId?: string;
+  chatHistory: LaylaChatHistoryEntry[];
+  isChatHistoryLoaded: boolean;
+  chatHistoryError?: string;
   vitals: {
     energy: number;
     fed: number;

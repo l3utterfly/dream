@@ -36,7 +36,8 @@ export default function CompanionDex() {
   const companions = laylaCompanions;
 
   const themeOf = useCallback((character: Character) => derivedThemes[character.id] ?? character.theme, [derivedThemes]);
-  const character = companions[Math.min(active, companions.length - 1)] ?? null;
+  const activeIndex = companions.length > 0 ? Math.min(active, companions.length - 1) : 0;
+  const character = companions[activeIndex] ?? null;
   const theme = character ? themeOf(character) : EMPTY_THEME;
 
   const go = useCallback((index: number) => {
@@ -68,15 +69,6 @@ export default function CompanionDex() {
     });
   }, [companions]);
 
-  useEffect(() => {
-    if (companions.length === 0) {
-      setActive(0);
-      return;
-    }
-
-    setActive((current) => Math.min(current, companions.length - 1));
-  }, [companions.length]);
-
   const applyParallax = useCallback(() => {
     const el = backgroundRef.current?.querySelector<HTMLElement>(".cd-bg-media");
     if (!el) return;
@@ -104,17 +96,17 @@ export default function CompanionDex() {
 
   useEffect(() => {
     applyParallax();
-  }, [active, applyParallax]);
+  }, [activeIndex, applyParallax]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowRight") go(active + 1);
-      if (event.key === "ArrowLeft") go(active - 1);
+      if (event.key === "ArrowRight") go(activeIndex + 1);
+      if (event.key === "ArrowLeft") go(activeIndex - 1);
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [active, go]);
+  }, [activeIndex, go]);
 
   const onTouchStart = (event: TouchEvent) => {
     touch.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
@@ -127,7 +119,7 @@ export default function CompanionDex() {
     const dy = event.changedTouches[0].clientY - touch.current.y;
 
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-      go(dx < 0 ? active + 1 : active - 1);
+      go(dx < 0 ? activeIndex + 1 : activeIndex - 1);
     }
 
     touch.current = null;
@@ -173,7 +165,7 @@ export default function CompanionDex() {
       />
 
       <div className="cd-scroll">
-        <CompanionControls active={active} companions={companions} hasMore={hasMore} isLoadingMore={isLoading} themeOf={themeOf} onSelect={go} />
+        <CompanionControls active={activeIndex} companions={companions} hasMore={hasMore} isLoadingMore={isLoading} themeOf={themeOf} onSelect={go} />
         <div className="cd-spacer" />
         <div className="cd-panel">
           {error ? (
