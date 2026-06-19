@@ -1,5 +1,5 @@
 import type { LaylaChatHistoryEntry, LaylaMemory } from "@layla-network/sdk";
-import type { BondResult } from "./libs/computeBond";
+import type { BondResult, ScoredSentence } from "./libs/computeBond";
 
 export type Mood = "happy" | "content" | "excited" | "sad" | "lonely" | "sleepy";
 export type Shape = "sun" | "cat" | "drop" | "moon";
@@ -8,6 +8,10 @@ export interface Theme {
   primary: string;
   deep: string;
   glow: string;
+}
+
+export interface ChatSentimentData {
+  scoredSentences: ScoredSentence[];
 }
 
 export interface Character {
@@ -30,6 +34,10 @@ export interface Character {
   chatHistory: LaylaChatHistoryEntry[];
   isChatHistoryLoaded: boolean;
   chatHistoryError?: string;
+  chatSentiment?: ChatSentimentData;
+  chatSentimentPromise?: Promise<ChatSentimentData>;
+  isChatSentimentLoading: boolean;
+  chatSentimentError?: string;
   bond?: BondResult;
   isBondLoading: boolean;
   bondError?: string;
@@ -66,4 +74,11 @@ export interface Character {
     tag: string;
     weight: number;
   }[];
+}
+
+export function waitForCharacterChatSentiment(character: Character): Promise<ChatSentimentData> {
+  if (character.chatSentiment) return Promise.resolve(character.chatSentiment);
+  if (character.chatSentimentPromise) return character.chatSentimentPromise;
+
+  return Promise.reject(new Error("Chat sentiment data is not available."));
 }

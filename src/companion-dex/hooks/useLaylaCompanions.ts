@@ -9,7 +9,7 @@ import LaylaSDK, {
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
 import { computeBond, type ScoredSentence } from "../libs/computeBond";
-import type { Character } from "../types";
+import type { Character, ChatSentimentData } from "../types";
 
 const PAGE_SIZE = 1;
 const CHAT_HISTORY_LIMIT = 50;
@@ -118,7 +118,10 @@ async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
   };
 }
 
-async function computeBondFromChatHistory(chatHistory: LaylaChatHistoryEntry[], signal: AbortSignal) {
+async function computeChatSentimentFromChatHistory(
+  chatHistory: LaylaChatHistoryEntry[],
+  signal: AbortSignal,
+): Promise<ChatSentimentData> {
   const scoredSentences: ScoredSentence[] = [];
 
   for (const entry of chatHistory) {
@@ -137,7 +140,7 @@ async function computeBondFromChatHistory(chatHistory: LaylaChatHistoryEntry[], 
     }
   }
 
-  return computeBond(scoredSentences);
+  return { scoredSentences };
 }
 
 function toCompanion(character: LaylaCharacter, index: number, image: string | null): Character {
@@ -164,6 +167,7 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     lastChat: "just now",
     chatHistory: [],
     isChatHistoryLoaded: false,
+    isChatSentimentLoading: true,
     isBondLoading: true,
     isMemoriesLoading: true,
     remembers: [
@@ -264,8 +268,32 @@ export function useLaylaCompanions() {
 
       void loadRecentChatHistory(character.id, controller.signal)
         .then(async ({ latestChatSessionId, chatHistory }) => {
+          const chatSentimentPromise = computeChatSentimentFromChatHistory(
+            chatHistory,
+            controller.signal,
+          );
+
+          setCompanions((current) =>
+            current.map((companion) =>
+              companion.id === character.id
+                ? {
+                    ...companion,
+                    latestChatSessionId,
+                    chatHistory,
+                    isChatHistoryLoaded: true,
+                    chatHistoryError: undefined,
+                    chatSentiment: undefined,
+                    chatSentimentPromise,
+                    isChatSentimentLoading: true,
+                    chatSentimentError: undefined,
+                  }
+                : companion,
+            ),
+          );
+
           try {
-            const bond = await computeBondFromChatHistory(chatHistory, controller.signal);
+            const chatSentiment = await chatSentimentPromise;
+            const bond = computeBond(chatSentiment.scoredSentences);
             console.log(`Computed bond for ${character.id}:`, bond);
 
             setCompanions((current) =>
@@ -273,10 +301,10 @@ export function useLaylaCompanions() {
                 companion.id === character.id
                   ? {
                       ...companion,
-                      latestChatSessionId,
-                      chatHistory,
-                      isChatHistoryLoaded: true,
-                      chatHistoryError: undefined,
+                      chatSentiment,
+                      chatSentimentPromise,
+                      isChatSentimentLoading: false,
+                      chatSentimentError: undefined,
                       bond,
                       isBondLoading: false,
                       bondError: undefined,
@@ -284,20 +312,20 @@ export function useLaylaCompanions() {
                   : companion,
               ),
             );
-          } catch (bondError) {
-            if (bondError instanceof LaylaAbortError) return;
+          } catch (chatSentimentError) {
+            if (chatSentimentError instanceof LaylaAbortError) return;
 
             setCompanions((current) =>
               current.map((companion) =>
                 companion.id === character.id
                   ? {
                       ...companion,
-                      latestChatSessionId,
-                      chatHistory,
-                      isChatHistoryLoaded: true,
-                      chatHistoryError: undefined,
+                      chatSentiment: undefined,
+                      chatSentimentPromise,
+                      isChatSentimentLoading: false,
+                      chatSentimentError: messageFromError(chatSentimentError),
                       isBondLoading: false,
-                      bondError: messageFromError(bondError),
+                      bondError: messageFromError(chatSentimentError),
                     }
                   : companion,
               ),
@@ -314,6 +342,8 @@ export function useLaylaCompanions() {
                     ...companion,
                     isChatHistoryLoaded: true,
                     chatHistoryError: messageFromError(historyError),
+                    isChatSentimentLoading: false,
+                    chatSentimentError: messageFromError(historyError),
                     isBondLoading: false,
                     bondError: messageFromError(historyError),
                   }
