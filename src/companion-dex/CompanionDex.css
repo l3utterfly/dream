@@ -374,6 +374,31 @@
   font-size: 13.5px;
   line-height: 1.45;
 }
+
+.cd-language-cloud {
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+}
+
+.cd-language-cloud svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.cd-language-cloud text {
+  dominant-baseline: central;
+  paint-order: stroke fill;
+  stroke: rgba(20, 20, 22, 0.42);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  transition:
+    fill 0.5s,
+    opacity 0.5s;
+}
+
 .cd-vital-button {
   flex: 1;
   min-width: 0;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import cloud from "d3-cloud";
 import {
   Brain,
   Clock,
@@ -22,6 +23,7 @@ import LaylaSDK, {
   LaylaError,
   type ChatCompletionStream,
 } from "@layla-network/sdk";
+import { eng, removeStopwords } from "stopword";
 import { MOOD_LABEL } from "../data";
 import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
 import { buildReadOnYouMessages } from "../libs/readOnYou";
@@ -36,10 +38,72 @@ const EMPTY_TALK_HISTOGRAM = {
   peak: "whenever you return",
   total: 0,
 };
+const PRIVATE_LANGUAGE_WIDTH = 432;
+const PRIVATE_LANGUAGE_HEIGHT = 190;
+const PRIVATE_LANGUAGE_WORD_LIMIT = 34;
+const EXTRA_PRIVATE_LANGUAGE_STOPWORDS = [
+  "cant",
+  "character",
+  "chat",
+  "chats",
+  "conversation",
+  "conversations",
+  "didnt",
+  "doesnt",
+  "dont",
+  "feel",
+  "feels",
+  "felt",
+  "gonna",
+  "history",
+  "ive",
+  "just",
+  "layla",
+  "like",
+  "likes",
+  "memory",
+  "memories",
+  "message",
+  "messages",
+  "really",
+  "remember",
+  "remembered",
+  "remembering",
+  "remembers",
+  "reply",
+  "replies",
+  "said",
+  "someone",
+  "talk",
+  "talked",
+  "talking",
+  "tend",
+  "tends",
+  "thats",
+  "theyre",
+  "thing",
+  "things",
+  "wanna",
+  "youll",
+  "youre",
+  "youve",
+  "i'm",
+  "im",
+  "okay",
+];
 
 const layla = new LaylaSDK();
 
 type ReflectionStatus = "idle" | "loading" | "done" | "error";
+
+interface PrivateLanguageWord {
+  text: string;
+  value: number;
+  size: number;
+  x?: number;
+  y?: number;
+  rotate?: number;
+}
 
 interface ReflectionState {
   characterId: string;
@@ -171,6 +235,206 @@ function countUniqueHighIntensityEmotions(character: Character) {
   }
 
   return emotions.size;
+}
+
+function cleanPrivateLanguageText(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") ?? "";
+}
+
+function hasPrivateLanguageSource(character: Character) {
+  return (
+    character.chatHistory.some((entry) => cleanPrivateLanguageText(entry.content)) ||
+    character.recentMemories.some((memory) =>
+      cleanPrivateLanguageText(memory.summary ?? memory.rawText),
+    )
+  );
+}
+
+function tokenizePrivateLanguage(text: string) {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[’]/g, "'")
+      .replace(/['"]s\b/g, "")
+      .match(/[\p{L}\p{N}][\p{L}\p{N}'_-]*/gu)
+      ?.map((token) => token.replace(/^[-_']+|[-_']+$/g, ""))
+      .filter((token) => token.length >= 3 && !/^\d+$/.test(token)) ?? []
+  );
+}
+
+function characterNameStopwords(name: string) {
+  return tokenizePrivateLanguage(name);
+}
+
+function buildPrivateLanguageWords(
+  characterName: string,
+  chatHistory: Character["chatHistory"],
+  recentMemories: Character["recentMemories"],
+): PrivateLanguageWord[] {
+  const sources = [
+    ...chatHistory.map((entry) => entry.content),
+    ...recentMemories.map((memory) => memory.summary ?? memory.rawText),
+  ];
+  const tokens = tokenizePrivateLanguage(sources.join(" "));
+  const stopwords = [
+    ...eng,
+    ...EXTRA_PRIVATE_LANGUAGE_STOPWORDS,
+    ...characterNameStopwords(characterName),
+  ];
+  const words = removeStopwords(tokens, stopwords);
+  const counts = new Map<string, number>();
+
+  for (const word of words) {
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+
+  const ranked = Array.from(counts, ([text, value]) => ({ text, value }))
+    .sort((a, b) => b.value - a.value || a.text.localeCompare(b.text))
+    .slice(0, PRIVATE_LANGUAGE_WORD_LIMIT);
+  const max = Math.max(...ranked.map((word) => word.value), 1);
+  const min = Math.min(...ranked.map((word) => word.value), max);
+
+  return ranked.map((word) => {
+    const t = max === min ? 0.62 : (word.value - min) / (max - min);
+    return {
+      ...word,
+      size: Math.round(15 + Math.pow(t, 0.72) * 23),
+    };
+  });
+}
+
+function hashString(value: string) {
+  let hash = 2166136261;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function seededRandom(seedText: string) {
+  let seed = hashString(seedText) || 1;
+
+  return () => {
+    seed += 0x6d2b79f5;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function PrivateLanguageCloud({ character }: { character: Character }) {
+  const words = useMemo(
+    () =>
+      buildPrivateLanguageWords(
+        character.name,
+        character.chatHistory,
+        character.recentMemories,
+      ),
+    [character.chatHistory, character.name, character.recentMemories],
+  );
+  const layoutSeed = useMemo(
+    () =>
+      `${character.id}:${words
+        .map((word) => `${word.text}:${word.value}`)
+        .join("|")}`,
+    [character.id, words],
+  );
+  const [layoutState, setLayoutState] = useState<{
+    seed: string;
+    words: PrivateLanguageWord[];
+  } | null>(null);
+  const layoutWords =
+    layoutState?.seed === layoutSeed ? layoutState.words : [];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (words.length === 0) return undefined;
+
+    const layout = cloud<PrivateLanguageWord>()
+      .size([PRIVATE_LANGUAGE_WIDTH, PRIVATE_LANGUAGE_HEIGHT])
+      .words(words.map((word) => ({ ...word })))
+      .padding((word) => (word.value > 2 ? 3 : 2))
+      .rotate(() => 0)
+      .font("Fredoka")
+      .fontWeight((word) => (word.value > 2 ? 700 : 600))
+      .fontSize((word) => word.size)
+      .random(seededRandom(layoutSeed))
+      .on("end", (placedWords) => {
+        if (cancelled) return;
+        setLayoutState({
+          seed: layoutSeed,
+          words: placedWords.filter(
+            (word) => typeof word.x === "number" && typeof word.y === "number",
+          ),
+        });
+      });
+
+    layout.start();
+
+    return () => {
+      cancelled = true;
+      layout.stop();
+    };
+  }, [layoutSeed, words]);
+
+  if (words.length === 0) {
+    return (
+      <p
+        className="cd-fade"
+        style={{
+          margin: 0,
+          fontSize: 13.5,
+          color: "var(--ink-2)",
+          lineHeight: 1.45,
+        }}
+      >
+        No private language yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="cd-language-cloud" aria-live="polite">
+      {layoutWords.length === 0 ? (
+        <SectionSpinner label="Shaping private language" />
+      ) : (
+        <svg
+          role="img"
+          aria-label={`Word cloud from your chats and memories with ${character.name}`}
+          viewBox={`0 0 ${PRIVATE_LANGUAGE_WIDTH} ${PRIVATE_LANGUAGE_HEIGHT}`}
+        >
+          <g
+            transform={`translate(${PRIVATE_LANGUAGE_WIDTH / 2} ${PRIVATE_LANGUAGE_HEIGHT / 2})`}
+          >
+            {layoutWords.map((word) => (
+              <text
+                key={`${word.text}-${word.value}`}
+                textAnchor="middle"
+                transform={`translate(${word.x ?? 0} ${word.y ?? 0})`}
+                style={{
+                  fill: word.value > 2 ? "var(--deep)" : "var(--ink-1)",
+                  fontFamily: "var(--display)",
+                  fontSize: word.size,
+                  fontWeight: word.value > 2 ? 700 : 600,
+                  opacity: Math.min(1, 0.52 + word.value * 0.12),
+                }}
+              >
+                <title>
+                  {word.text} · {word.value} {word.value === 1 ? "time" : "times"}
+                </title>
+                {word.text}
+              </text>
+            ))}
+          </g>
+        </svg>
+      )}
+    </div>
+  );
 }
 
 interface StatsPanelProps {
@@ -337,6 +601,13 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     !character.memoriesError &&
     character.recentMemories.length > 0;
   const reflectDisabled = isReflecting || !canReflect;
+  const privateLanguageLoading =
+    !character.isChatHistoryLoaded || character.isMemoriesLoading;
+  const privateLanguageHasSource = hasPrivateLanguageSource(character);
+  const privateLanguageError =
+    [character.chatHistoryError, character.memoriesError]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const statItems = [
     {
       node: <CountNum value={byTheNumbers.dayStreak} />,
@@ -797,55 +1068,25 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       </Block>
 
       <Block icon={<Sparkles size={15} />} title="Your private language">
-        <div key={`lang-${character.id}`} className="cd-fade">
-          <div
+        {privateLanguageLoading && !privateLanguageHasSource ? (
+          <SectionSpinner label="Reading private language" />
+        ) : privateLanguageError && !privateLanguageHasSource ? (
+          <p
+            className="cd-fade"
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 7,
-              marginBottom: 22,
+              margin: 0,
+              fontSize: 13.5,
+              color: "var(--ink-2)",
+              lineHeight: 1.45,
             }}
           >
-            {character.jokes.map((joke, i) => (
-              <span
-                key={i}
-                style={{
-                  fontSize: 12.5,
-                  padding: "5px 12px",
-                  borderRadius: 99,
-                  background: "var(--chip)",
-                  color: "var(--ink-1)",
-                }}
-              >
-                😶‍🌫️ {joke}
-              </span>
-            ))}
+            Private language unavailable: {privateLanguageError}
+          </p>
+        ) : (
+          <div key={`lang-${character.id}`} className="cd-fade">
+            <PrivateLanguageCloud character={character} />
           </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 10,
-              alignItems: "baseline",
-            }}
-          >
-            {character.topics.map((topic, i) => (
-              <span
-                key={i}
-                style={{
-                  color: "var(--deep)",
-                  fontWeight: 700,
-                  opacity: 0.5 + topic.weight * 0.16,
-                  fontSize: 13 + topic.weight * 5,
-                  fontFamily: "var(--display)",
-                  transition: "color .5s",
-                }}
-              >
-                {topic.tag}
-              </span>
-            ))}
-          </div>
-        </div>
+        )}
       </Block>
 
       <div style={{ height: 44 }} />
