@@ -10,7 +10,6 @@ import {
   ListChecks,
   MessageCircle,
   Quote,
-  Scale,
   Smile,
   Sparkles,
   TrendingDown,
@@ -125,6 +124,49 @@ function buildTalkHistogram(chatHistory: Character["chatHistory"]) {
     peak: summarizePeakHour(hours),
     total,
   };
+}
+
+function dayOrdinalFromTimestamp(timestamp: number) {
+  const date = dateFromTimestamp(timestamp);
+  if (!date) return null;
+
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
+}
+
+function countLongestDayStreak(chatHistory: Character["chatHistory"]) {
+  const days = Array.from(
+    new Set(
+      chatHistory
+        .map((entry) => dayOrdinalFromTimestamp(entry.timestamp))
+        .filter((day): day is number => day !== null),
+    ),
+  ).sort((a, b) => a - b);
+
+  let longest = 0;
+  let current = 0;
+  let previous: number | null = null;
+
+  for (const day of days) {
+    current = previous !== null && day === previous + 1 ? current + 1 : 1;
+    longest = Math.max(longest, current);
+    previous = day;
+  }
+
+  return longest;
+}
+
+function countUniqueHighIntensityEmotions(character: Character) {
+  const emotions = new Set<string>();
+
+  for (const sentence of character.chatSentiment?.scoredSentences ?? []) {
+    for (const [emotion, intensity] of Object.entries(sentence.sentimentValue)) {
+      if (emotion !== "neutral" && intensity > 0.5) {
+        emotions.add(emotion);
+      }
+    }
+  }
+
+  return emotions.size;
 }
 
 interface StatsPanelProps {
@@ -242,7 +284,6 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     }
   }, [character]);
 
-  const balanceLeft = 50 + character.stats.balance / 2;
   const trend = character.bond?.trend;
   const trendTimespan = trend
     ? trend.timespanWeeks > 0
@@ -263,6 +304,14 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
   const talkHistogram = useMemo(
     () => buildTalkHistogram(character.chatHistory),
     [character.chatHistory],
+  );
+  const byTheNumbers = useMemo(
+    () => ({
+      chatHistories: character.chatHistory.length,
+      dayStreak: countLongestDayStreak(character.chatHistory),
+      emotions: countUniqueHighIntensityEmotions(character),
+    }),
+    [character],
   );
   const momentsLoading =
     character.isChatSentimentLoading ||
@@ -286,34 +335,24 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
   const reflectDisabled = isReflecting || !canReflect;
   const statItems = [
     {
-      node: <CountNum value={character.stats.streak} />,
+      node: <CountNum value={byTheNumbers.dayStreak} />,
       small: "day streak",
       icon: <Coffee size={15} />,
     },
     {
       node: (
         <CountNum
-          value={character.stats.messages}
+          value={byTheNumbers.chatHistories}
           format={(n) => n.toLocaleString()}
         />
       ),
-      small: "messages",
+      small: "chat histories",
       icon: <MessageCircle size={15} />,
     },
     {
-      node: <CountNum value={character.stats.laughs} />,
-      small: "laughs / wk",
+      node: <CountNum value={byTheNumbers.emotions} />,
+      small: "emotions",
       icon: <Laugh size={15} />,
-    },
-    {
-      node:
-        character.stats.balance === 0
-          ? "even"
-          : character.stats.balance < 0
-            ? "you"
-            : "them",
-      small: "opens up",
-      icon: <Scale size={15} />,
     },
   ];
 
@@ -750,47 +789,6 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
               </div>
             </div>
           ))}
-        </div>
-        <div style={{ marginTop: 26 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 11,
-              color: "var(--ink-2)",
-              marginBottom: 8,
-              fontWeight: 600,
-              letterSpacing: ".04em",
-            }}
-          >
-            <span>YOU OPEN UP</span>
-            <span>RECIPROCITY</span>
-            <span>THEY OPEN UP</span>
-          </div>
-          <div
-            style={{
-              position: "relative",
-              height: 8,
-              borderRadius: 99,
-              background:
-                "linear-gradient(90deg, var(--glow), var(--track) 50%, var(--glow))",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: -6,
-                left: `calc(${mounted ? balanceLeft : 50}% - 10px)`,
-                width: 20,
-                height: 20,
-                borderRadius: 99,
-                background: "var(--page)",
-                border: "3px solid var(--primary)",
-                transition:
-                  "left .8s cubic-bezier(.2,.8,.2,1), border-color .5s",
-              }}
-            />
-          </div>
         </div>
       </Block>
 
