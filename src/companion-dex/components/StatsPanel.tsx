@@ -130,7 +130,9 @@ function dayOrdinalFromTimestamp(timestamp: number) {
   const date = dateFromTimestamp(timestamp);
   if (!date) return null;
 
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
+  return (
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000
+  );
 }
 
 function countLongestDayStreak(chatHistory: Character["chatHistory"]) {
@@ -159,7 +161,9 @@ function countUniqueHighIntensityEmotions(character: Character) {
   const emotions = new Set<string>();
 
   for (const sentence of character.chatSentiment?.scoredSentences ?? []) {
-    for (const [emotion, intensity] of Object.entries(sentence.sentimentValue)) {
+    for (const [emotion, intensity] of Object.entries(
+      sentence.sentimentValue,
+    )) {
       if (emotion !== "neutral" && intensity > 0.5) {
         emotions.add(emotion);
       }
