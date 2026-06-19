@@ -116,6 +116,7 @@ export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex
     {
       id: seedIndex * 3 + 1,
       character_id: seed.id,
+      session_id: `${seed.id}-first`,
       rawText: `${seed.name} remembers that you tend to notice the emotional weather in a room before you talk about practical plans.`,
       timestamp,
       summary: "You tend to notice the emotional weather in a room before moving into practical plans.",
@@ -124,6 +125,7 @@ export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex
     {
       id: seedIndex * 3 + 2,
       character_id: seed.id,
+      session_id: `${seed.id}-style`,
       rawText: `${seed.name} keeps in mind that you like replies that feel specific, grounded, and a little warm without becoming overly polished.`,
       timestamp: timestamp - 20 * 60 * 1000,
       summary: "You like replies that feel specific, grounded, and warm without becoming overly polished.",
@@ -132,6 +134,7 @@ export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex
     {
       id: seedIndex * 3 + 3,
       character_id: seed.id,
+      session_id: `${seed.id}-tired`,
       rawText: `${seed.name} remembers that when you are tired, you prefer someone to stay steady with you instead of trying to rush you into a better mood.`,
       timestamp: timestamp - 40 * 60 * 1000,
       summary: "When you are tired, you prefer steadiness over being rushed into a better mood.",

@@ -14,6 +14,8 @@ import type { Character } from "../types";
 const PAGE_SIZE = 1;
 const CHAT_HISTORY_LIMIT = 50;
 const TOP_MEMORY_LIMIT = 3;
+const RECENT_MEMORY_LIMIT = 50;
+const OPEN_THREAD_LIMIT = 3;
 const layla = new LaylaSDK();
 
 function imageFromCharacterCard(character: LaylaCharacter) {
@@ -47,6 +49,33 @@ function shortText(value: string, maxLength: number) {
 function cleanMemoryText(memory: LaylaMemory) {
   const text = (memory.summary ?? memory.rawText).trim().replace(/\s+/g, " ");
   return text;
+}
+
+function lastSentenceFromMemory(memory: LaylaMemory) {
+  const text = cleanMemoryText(memory);
+  const sentences = splitSentences(text);
+  return sentences.at(-1) ?? text;
+}
+
+function openThreadsFromMemories(memories: LaylaMemory[]) {
+  const seenSessionIds = new Set<string>();
+  const threads: string[] = [];
+  const newestFirstMemories = [...memories].sort((a, b) => b.timestamp - a.timestamp);
+
+  for (const memory of newestFirstMemories) {
+    const sessionId = memory.session_id?.trim() ?? "";
+    if (!sessionId || seenSessionIds.has(sessionId)) continue;
+
+    const thread = lastSentenceFromMemory(memory);
+    if (!thread) continue;
+
+    seenSessionIds.add(sessionId);
+    threads.push(thread);
+
+    if (threads.length === OPEN_THREAD_LIMIT) break;
+  }
+
+  return threads;
 }
 
 function splitSentences(value: string | null) {
@@ -142,6 +171,7 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
       { fact: shortText(personality, 36) },
       { fact: shortText(scenario, 36) },
     ],
+    recentMemories: [],
     threads: [shortText(scenario, 88), `Ask ${name} what they want you to notice first.`],
     moments: [
       {
@@ -297,17 +327,21 @@ export function useLaylaCompanions() {
     });
   }, []);
 
-  const hydrateTopMemories = useCallback((characters: LaylaCharacter[]) => {
+  const hydrateMemories = useCallback((characters: LaylaCharacter[]) => {
     characters.forEach((character) => {
       const controller = new AbortController();
       memoriesAbortControllersRef.current.add(controller);
 
-      void layla.memories
-        .getTopMemories(character.id, TOP_MEMORY_LIMIT, {
+      void Promise.all([
+        layla.memories.getTopMemories(character.id, TOP_MEMORY_LIMIT, {
           signal: controller.signal,
-        })
-        .then((memories) => {
-          const remembers = memories
+        }),
+        layla.memories.list(character.id, 0, RECENT_MEMORY_LIMIT, {
+          signal: controller.signal,
+        }),
+      ])
+        .then(([topMemories, recentMemories]) => {
+          const remembers = topMemories
             .map(cleanMemoryText)
             .filter(Boolean)
             .slice(0, TOP_MEMORY_LIMIT)
@@ -315,6 +349,7 @@ export function useLaylaCompanions() {
               fact,
               fresh: index === 0,
             }));
+          const threads = openThreadsFromMemories(recentMemories);
 
           setCompanions((current) =>
             current.map((companion) =>
@@ -322,6 +357,8 @@ export function useLaylaCompanions() {
                 ? {
                     ...companion,
                     remembers,
+                    recentMemories,
+                    threads,
                     isMemoriesLoading: false,
                     memoriesError: undefined,
                   }
@@ -338,6 +375,8 @@ export function useLaylaCompanions() {
                 ? {
                     ...companion,
                     remembers: [],
+                    recentMemories: [],
+                    threads: [],
                     isMemoriesLoading: false,
                     memoriesError: messageFromError(memoriesError),
                   }
@@ -382,7 +421,7 @@ export function useLaylaCompanions() {
       setHasMore(hasMoreRef.current);
       hydrateImages(laylaCharacters);
       hydrateChatHistories(laylaCharacters);
-      hydrateTopMemories(laylaCharacters);
+      hydrateMemories(laylaCharacters);
 
       return nextCompanions.length;
     } catch (loadError) {
@@ -398,7 +437,7 @@ export function useLaylaCompanions() {
         setIsLoading(false);
       }
     }
-  }, [hydrateChatHistories, hydrateImages, hydrateTopMemories]);
+  }, [hydrateChatHistories, hydrateImages, hydrateMemories]);
 
   useEffect(() => {
     void loadMore();
