@@ -3,7 +3,7 @@ import type { CSSProperties, TouchEvent } from "react";
 import { CompanionBackground } from "./companion-dex/components/CompanionBackground";
 import { CompanionControls } from "./companion-dex/components/CompanionControls";
 import { StatsPanel } from "./companion-dex/components/StatsPanel";
-import { AUTO_THEME_FROM_IMAGE, EMPTY_THEME } from "./companion-dex/data";
+import { EMPTY_THEME } from "./companion-dex/data";
 import { useLaylaCompanions } from "./companion-dex/hooks/useLaylaCompanions";
 import type { Character, Theme } from "./companion-dex/types";
 import { extractThemeFromUrl } from "./companion-dex/utils/themeFromImage";
@@ -12,16 +12,19 @@ import "./companion-dex/CompanionDex.css";
 const companionDexVars = (theme: Theme) =>
   ({
     "--primary": theme.primary,
-    "--deep": theme.primary,
+    "--deep": theme.deep,
     "--glow": theme.glow,
-    "--page": "#1c1c1c",
-    "--track": "#333333",
-    "--chip": "#383838",
-    "--hair": "#343434",
-    "--text": "#ffffff",
-    "--ink-1": "#cfcfd4",
-    "--ink-2": "#888888",
-    "--muted": "#888888",
+    "--page": theme.page ?? "#1c1c1c",
+    "--panel": theme.panel ?? "rgba(20, 20, 22, 0.82)",
+    "--panel-border": theme.panelBorder ?? "rgba(255, 255, 255, 0.06)",
+    "--panel-shadow": theme.panelShadow ?? "0 -20px 50px -20px rgba(0, 0, 0, 0.6)",
+    "--track": theme.track ?? "#333333",
+    "--chip": theme.chip ?? "#383838",
+    "--hair": theme.hair ?? "#343434",
+    "--text": theme.text ?? "#ffffff",
+    "--ink-1": theme.ink1 ?? "#cfcfd4",
+    "--ink-2": theme.ink2 ?? "#888888",
+    "--muted": theme.muted ?? "#888888",
     "--display": "'Fredoka', ui-rounded, system-ui, sans-serif",
     "--mono": "ui-monospace, 'SF Mono', Menlo, monospace",
   }) as CSSProperties;
@@ -32,6 +35,8 @@ export default function CompanionDex() {
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const { companions: laylaCompanions, error, hasMore, isLoading, loadMore } = useLaylaCompanions();
   const backgroundRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
+  const paletteRequestsRef = useRef<Set<string>>(new Set());
   const touch = useRef<{ x: number; y: number } | null>(null);
   const companions = laylaCompanions;
 
@@ -58,12 +63,26 @@ export default function CompanionDex() {
   }, [companions.length, hasMore, loadMore]);
 
   useEffect(() => {
-    if (!AUTO_THEME_FROM_IMAGE) return;
+    isMountedRef.current = true;
 
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     companions.forEach((companion) => {
       if (!companion.image) return;
 
-      extractThemeFromUrl(companion.image, (derivedTheme) => {
+      const requestKey = `${companion.id}:${companion.image}`;
+      if (paletteRequestsRef.current.has(requestKey)) return;
+
+      paletteRequestsRef.current.add(requestKey);
+      void extractThemeFromUrl(companion.image).then((derivedTheme) => {
+        if (!derivedTheme || !isMountedRef.current) {
+          paletteRequestsRef.current.delete(requestKey);
+          return;
+        }
         setDerivedThemes((themes) => ({ ...themes, [companion.id]: derivedTheme }));
       });
     });

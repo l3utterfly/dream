@@ -8,6 +8,17 @@ export interface Theme {
   primary: string;
   deep: string;
   glow: string;
+  page?: string;
+  panel?: string;
+  panelBorder?: string;
+  panelShadow?: string;
+  track?: string;
+  chip?: string;
+  hair?: string;
+  text?: string;
+  ink1?: string;
+  ink2?: string;
+  muted?: string;
 }
 
 export interface ChatSentimentData {

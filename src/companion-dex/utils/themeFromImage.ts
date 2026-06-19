@@ -1,120 +1,129 @@
+import { extractColors } from "extract-colors";
 import type { Theme } from "../types";
 
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255;
-  g /= 255;
-  b /= 255;
+type ExtractedColor = Awaited<ReturnType<typeof extractColors>>[number];
 
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const lightness = (max + min) / 2;
-  const delta = max - min;
-  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
-  let hue = 0;
-
-  if (delta !== 0) {
-    if (max === r) hue = ((g - b) / delta) % 6;
-    else if (max === g) hue = (b - r) / delta + 2;
-    else hue = (r - g) / delta + 4;
-
-    hue *= 60;
-    if (hue < 0) hue += 360;
-  }
-
-  return [hue, saturation, lightness];
+function clamp(value: number, min = 0, max = 1) {
+  return Math.min(Math.max(value, min), max);
 }
 
-function hslToHex(hue: number, saturation: number, lightness: number): string {
-  const s = Math.max(0, Math.min(1, saturation));
-  const l = Math.max(0, Math.min(1, lightness));
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
-  const m = l - c / 2;
-  let rgb: [number, number, number];
+function hslToHex(hue: number, saturation: number, lightness: number) {
+  const h = ((hue % 1) + 1) % 1;
+  const s = clamp(saturation);
+  const l = clamp(lightness);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
 
-  if (hue < 60) rgb = [c, x, 0];
-  else if (hue < 120) rgb = [x, c, 0];
-  else if (hue < 180) rgb = [0, c, x];
-  else if (hue < 240) rgb = [0, x, c];
-  else if (hue < 300) rgb = [x, 0, c];
-  else rgb = [c, 0, x];
+  const toChannel = (offset: number) => {
+    let t = h + offset;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
 
-  const toHex = (value: number) => Math.round((value + m) * 255).toString(16).padStart(2, "0");
-  const [r, g, b] = rgb;
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  const toHex = (channel: number) =>
+    Math.round(channel * 255)
+      .toString(16)
+      .padStart(2, "0");
+
+  return `#${toHex(toChannel(1 / 3))}${toHex(toChannel(0))}${toHex(toChannel(-1 / 3))}`;
 }
 
-function themeFromRGB(r: number, g: number, b: number): Theme {
-  const [hue, saturation] = rgbToHsl(r, g, b);
-  const sat = Math.max(0.5, Math.min(0.9, saturation));
+function hexToRgb(hex: string) {
+  const value = hex.replace("#", "");
+  const numeric = Number.parseInt(value, 16);
 
   return {
-    primary: hslToHex(hue, sat, 0.66),
-    deep: hslToHex(hue, sat, 0.66),
-    glow: hslToHex(hue, Math.min(0.7, sat), 0.78),
+    red: (numeric >> 16) & 255,
+    green: (numeric >> 8) & 255,
+    blue: numeric & 255,
   };
 }
 
-export function extractThemeFromUrl(url: string, onTheme: (theme: Theme) => void) {
-  const probe = new Image();
-  probe.crossOrigin = "anonymous";
-  probe.onload = () => {
-    try {
-      const size = 56;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
+function mixHex(a: string, b: string, amount: number) {
+  const left = hexToRgb(a);
+  const right = hexToRgb(b);
+  const t = clamp(amount);
+  const mix = (x: number, y: number) => Math.round(x * (1 - t) + y * t);
+  const toHex = (value: number) => value.toString(16).padStart(2, "0");
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+  return `#${toHex(mix(left.red, right.red))}${toHex(mix(left.green, right.green))}${toHex(mix(left.blue, right.blue))}`;
+}
 
-      ctx.drawImage(probe, 0, 0, size, size);
-      const { data } = ctx.getImageData(0, 0, size, size);
-      const buckets: Record<string, { n: number; r: number; g: number; b: number; sat: number }> = {};
+function pickAccent(colors: ExtractedColor[]) {
+  return [...colors]
+    .filter((color) => color.lightness > 0.16 && color.lightness < 0.88)
+    .sort((a, b) => {
+      const aScore = a.area * (0.75 + a.saturation) * (0.45 + a.intensity);
+      const bScore = b.area * (0.75 + b.saturation) * (0.45 + b.intensity);
+      return bScore - aScore;
+    })[0];
+}
 
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const alpha = data[i + 3];
+function pickSurfaceColor(colors: ExtractedColor[], accent: ExtractedColor) {
+  return (
+    [...colors]
+      .filter((color) => color.lightness < 0.62)
+      .sort((a, b) => b.area * (1 - b.lightness) - a.area * (1 - a.lightness))[0] ?? accent
+  );
+}
 
-        if (alpha < 200) continue;
+function colorToTheme(colors: ExtractedColor[]): Theme | null {
+  const accent = pickAccent(colors);
+  if (!accent) return null;
 
-        const max = Math.max(r, g, b);
-        const min = Math.min(r, g, b);
-        const lightness = (max + min) / 2 / 255;
+  const surface = pickSurfaceColor(colors, accent);
+  const saturation = clamp(Math.max(accent.saturation, 0.5), 0.5, 0.88);
+  const surfaceSaturation = clamp(surface.saturation * 0.45 + accent.saturation * 0.12, 0.08, 0.28);
+  const surfaceHue = Number.isFinite(surface.hue) ? surface.hue : accent.hue;
+  const base = hslToHex(surfaceHue, surfaceSaturation, 0.14);
+  const panel = mixHex(hslToHex(surfaceHue, surfaceSaturation, 0.18), "#141416", 0.35);
+  const chip = mixHex(hslToHex(surfaceHue, surfaceSaturation, 0.25), "#333333", 0.42);
 
-        if (lightness < 0.12 || lightness > 0.92) continue;
-
-        const key = `${r >> 4}-${g >> 4}-${b >> 4}`;
-        const bucket = buckets[key] || (buckets[key] = { n: 0, r: 0, g: 0, b: 0, sat: 0 });
-
-        bucket.n += 1;
-        bucket.r += r;
-        bucket.g += g;
-        bucket.b += b;
-        bucket.sat += max - min;
-      }
-
-      let best: { n: number; r: number; g: number; b: number; sat: number } | null = null;
-      let score = -1;
-
-      for (const key in buckets) {
-        const bucket = buckets[key];
-        const currentScore = bucket.n * (1 + bucket.sat / bucket.n / 128);
-
-        if (currentScore > score) {
-          score = currentScore;
-          best = bucket;
-        }
-      }
-
-      if (best) {
-        onTheme(themeFromRGB(Math.round(best.r / best.n), Math.round(best.g / best.n), Math.round(best.b / best.n)));
-      }
-    } catch {
-      // Cross-origin or tainted canvas failures should leave the curated theme intact.
-    }
+  return {
+    primary: hslToHex(accent.hue, saturation, 0.64),
+    deep: hslToHex(accent.hue, saturation, 0.7),
+    glow: hslToHex(accent.hue, clamp(saturation * 0.76, 0.42, 0.7), 0.78),
+    page: mixHex(base, "#161617", 0.44),
+    panel: `${panel}e8`,
+    panelBorder: `color-mix(in srgb, ${hslToHex(accent.hue, saturation, 0.72)} 24%, transparent)`,
+    panelShadow: `0 -22px 54px -22px ${mixHex(base, "#000000", 0.46)}d9`,
+    track: mixHex(chip, "#242424", 0.42),
+    chip,
+    hair: mixHex(chip, "#ffffff", 0.1),
+    text: "#ffffff",
+    ink1: mixHex(hslToHex(surfaceHue, surfaceSaturation, 0.9), "#ffffff", 0.28),
+    ink2: mixHex(hslToHex(surfaceHue, surfaceSaturation, 0.7), "#777777", 0.48),
+    muted: mixHex(hslToHex(accent.hue, saturation, 0.72), "#888888", 0.48),
   };
-  probe.src = url;
+}
+
+function loadImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to load profile image for color extraction."));
+    image.src = url;
+  });
+}
+
+export async function extractThemeFromUrl(url: string) {
+  try {
+    const image = await loadImage(url);
+    const colors = await extractColors(image, {
+      pixels: 32000,
+      distance: 0.18,
+      colorValidator: (_red, _green, _blue, alpha = 255) => alpha > 200,
+      crossOrigin: "anonymous",
+    });
+
+    return colorToTheme(colors);
+  } catch (error: unknown) {
+    console.error("Error extracting theme from URL:", error);
+    return null;
+  }
 }

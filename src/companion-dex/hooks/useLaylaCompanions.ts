@@ -300,7 +300,6 @@ export function useLaylaCompanions() {
           try {
             const chatSentiment = await chatSentimentPromise;
             const bond = computeBond(chatSentiment.scoredTexts);
-            console.log(`Computed bond for ${character.id}:`, bond);
 
             setCompanions((current) =>
               current.map((companion) =>

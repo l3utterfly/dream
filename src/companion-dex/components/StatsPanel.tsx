@@ -24,7 +24,6 @@ import LaylaSDK, {
   type ChatCompletionStream,
 } from "@layla-network/sdk";
 import { eng, removeStopwords } from "stopword";
-import { MOOD_LABEL } from "../data";
 import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
 import { buildReadOnYouMessages } from "../libs/readOnYou";
 import type { Character, MemorySentimentData, Theme } from "../types";
@@ -664,9 +663,8 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
           <span className="cd-mood-dot" />
           <span>
             <strong style={{ color: "var(--deep)" }}>
-              {MOOD_LABEL[character.mood]}
-            </strong>{" "}
-            — {character.moodReason}
+              {character.mood}
+            </strong>
           </span>
         </p>
         <div
