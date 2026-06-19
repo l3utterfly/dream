@@ -15,18 +15,17 @@
  * Everything is pure: same input -> same output. Tune the WEIGHTS / CONFIG to taste.
  */
 
+import { SENTIMENT_THRESHOLDS, type SentimentValues } from "@layla-network/sdk";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-/** Map of emotion label -> activation value (typically 0..1). Missing keys are treated as 0. */
-export type SentimentMap = Record<string, number>;
 
 export interface ScoredSentence {
   sentence: string;
   /** Epoch milliseconds. */
   timestamp: number;
-  sentimentValue: SentimentMap;
+  sentimentValue: SentimentValues;
 }
 
 export interface BondResult {
@@ -61,20 +60,6 @@ export interface BondConfig {
    */
   trendWindowWeeks?: number;
 }
-
-// ---------------------------------------------------------------------------
-// Thresholds (denoising gate) — only emotions at/above threshold count.
-// ---------------------------------------------------------------------------
-
-export const SENTIMENT_THRESHOLDS: Record<string, number> = {
-  admiration: 0.3, amusement: 0.25, anger: 0.15, annoyance: 0.2,
-  approval: 0.15, caring: 0.2, confusion: 0.15, curiosity: 0.2,
-  desire: 0.2, disappointment: 0.1, disapproval: 0.15, disgust: 0.2,
-  embarrassment: 0.3, excitement: 0.25, fear: 0.4, gratitude: 0.25,
-  grief: 0.85, joy: 0.2, love: 0.3, nervousness: 0.6, optimism: 0.2,
-  pride: 0.7, realization: 0.1, relief: 0.5, remorse: 0.2,
-  sadness: 0.2, surprise: 0.15, neutral: 0.3,
-};
 
 // ---------------------------------------------------------------------------
 // Axis weights.
@@ -134,12 +119,12 @@ const squash = (raw: number, gain: number) => 50 + 50 * Math.tanh(gain * raw);
  *   warmthRaw: signed sum of (activation * warmthWeight) over emotions that clear threshold.
  *   depthRaw:  non-negative sum of (activation * depthWeight) for the same.
  */
-function scoreSentence(s: SentimentMap): { warmthRaw: number; depthRaw: number } {
+function scoreSentence(s: SentimentValues): { warmthRaw: number; depthRaw: number } {
   let warmthRaw = 0;
   let depthRaw = 0;
   for (const emotion in s) {
-    const value = s[emotion];
-    const threshold = SENTIMENT_THRESHOLDS[emotion] ?? 1; // unknown emotions need >=1 to count
+    const value = s[emotion as keyof SentimentValues];
+    const threshold = SENTIMENT_THRESHOLDS[emotion as keyof SentimentValues] ?? 1; // unknown emotions need >=1 to count
     if (value < threshold) continue;
     warmthRaw += value * (WARMTH_WEIGHTS[emotion] ?? 0);
     depthRaw += value * (DEPTH_WEIGHTS[emotion] ?? 0);
