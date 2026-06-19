@@ -30,13 +30,13 @@ export function getCharacterDescription(character: Character) {
     (moment) => moment.context === "how their card introduces them",
   )?.quote;
 
-  return cleanPromptValue(cardDescription ?? character.impression);
+  return cleanPromptValue(cardDescription ?? "No description available");
 }
 
 export function getCharacterPersonality(character: Character) {
   const cardPersonality = character.remembers.find((memory) => !memory.fresh)?.fact;
 
-  return cleanPromptValue(cardPersonality ?? character.tagline);
+  return cleanPromptValue(cardPersonality ?? "No personality description available");
 }
 
 export function getStage(character: Character): ReadOnYouStage {

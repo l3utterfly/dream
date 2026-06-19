@@ -23,20 +23,6 @@ function imageFromCharacterCard(character: LaylaCharacter) {
   return typeof image === "string" && image.length > 0 ? image : null;
 }
 
-function splitTerms(value: string) {
-  return value
-    .split(/[,;|]/)
-    .map((term) => term.trim())
-    .filter(Boolean);
-}
-
-function termsFromCharacterCard(character: LaylaCharacter) {
-  const data = character.data.data;
-  const tags = data.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0 && tag !== "mock");
-  const personality = splitTerms(data.personality);
-  return [...tags, ...personality].slice(0, 5);
-}
-
 function cleanSentence(value: string | undefined, fallback: string) {
   const sentence = value?.trim().replace(/\s+/g, " ");
   return sentence && sentence.length > 0 ? sentence : fallback;
@@ -175,8 +161,6 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
   const cardImage = imageFromCharacterCard(character);
   const description = cleanSentence(data.description, `${name} is ready to chat.`);
   const personality = cleanSentence(data.personality, "open, attentive");
-  const terms = termsFromCharacterCard(character);
-  const topicTerms = terms.length > 0 ? terms : ["conversation", "memory", "connection"];
   const greeting = cleanSentence(data.first_mes, `Hi, I'm ${name}.`);
   const scenario = cleanSentence(data.scenario, "You are getting to know each other through Layla.");
 
@@ -184,9 +168,8 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     ...profile,
     id: character.id,
     name,
-    tagline: shortText(personality.toLowerCase(), 42),
     image: cardImage ?? image ?? undefined,
-    moodReason: `${name}'s card feels ${topicTerms.slice(0, 2).join(" and ")} today`,
+    moodReason: `No mood reason`,
     daysKnown: 1,
     firstMet: "today",
     lastChat: "just now",
@@ -223,11 +206,6 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
           : "whenever you return",
     theirRead: "is still forming an impression from your first conversations.",
     impression: `${name}'s card suggests ${shortText(description, 96)}`,
-    jokes: topicTerms.slice(0, 3),
-    topics: topicTerms.map((tag, topicIndex) => ({
-      tag,
-      weight: Math.max(1, 3 - Math.floor(topicIndex / 2)),
-    })),
   };
 }
 

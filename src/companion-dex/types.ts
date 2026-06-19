@@ -21,7 +21,6 @@ export interface MemorySentimentData {
 export interface Character {
   id: string;
   name: string;
-  tagline: string;
   type: string;
   shape: Shape;
   image?: string;
@@ -77,11 +76,6 @@ export interface Character {
     laughs: number;
     balance: number;
   };
-  jokes: string[];
-  topics: {
-    tag: string;
-    weight: number;
-  }[];
 }
 
 export function waitForCharacterChatSentiment(character: Character): Promise<ChatSentimentData> {

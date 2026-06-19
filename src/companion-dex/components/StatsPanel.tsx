@@ -650,9 +650,6 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
         >
           {character.name}
         </h2>
-        <p style={{ margin: "6px 0 0", color: "var(--ink-1)", fontSize: 14.5 }}>
-          {character.tagline}
-        </p>
         <p
           style={{
             margin: "12px 0 0",
