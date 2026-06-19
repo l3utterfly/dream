@@ -184,6 +184,11 @@ export function Vital({ icon, label, value, onTap }: VitalProps) {
   );
 }
 
+function formatHeatmapHour(hour: number) {
+  const date = new Date(2020, 0, 1, hour);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(date);
+}
+
 interface HeatmapProps {
   hours: number[];
   peak: string;
@@ -198,7 +203,7 @@ export function Heatmap({ hours, peak }: HeatmapProps) {
         {hours.map((v, i) => (
           <div
             key={i}
-            title={`${i}:00`}
+            title={`${formatHeatmapHour(i)} · ${v} ${v === 1 ? "message" : "messages"}`}
             style={{
               flex: 1,
               height: `${Math.max(8, (v / max) * 100)}%`,

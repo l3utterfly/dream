@@ -8,6 +8,11 @@ import { Bar, Block, Heatmap, SectionSpinner, Vital } from "./MetricSections";
 import { CountNum } from "./CountNum";
 
 const EMPTY_MEMORY_SENTIMENT: MemorySentimentData = { scoredSentences: [] };
+const EMPTY_TALK_HISTOGRAM = {
+  hours: Array.from({ length: 24 }, () => 0),
+  peak: "whenever you return",
+  total: 0,
+};
 
 function formatMomentDate(timestamp: number) {
   const date = new Date(timestamp);
@@ -29,6 +34,48 @@ function formatMomentDate(timestamp: number) {
       : { month: "short", day: "numeric", year: "numeric" };
 
   return new Intl.DateTimeFormat(undefined, options).format(date);
+}
+
+function dateFromTimestamp(timestamp: number) {
+  if (!Number.isFinite(timestamp)) return null;
+
+  const milliseconds = Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+  const date = new Date(milliseconds);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatHour(hour: number) {
+  const date = new Date(2020, 0, 1, hour);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(date);
+}
+
+function summarizePeakHour(hours: number[]) {
+  const peakCount = Math.max(...hours);
+  if (peakCount <= 0) return "whenever you return";
+
+  const peakHour = hours.findIndex((count) => count === peakCount);
+  return `around ${formatHour(peakHour)}`;
+}
+
+function buildTalkHistogram(chatHistory: Character["chatHistory"]) {
+  if (chatHistory.length === 0) return EMPTY_TALK_HISTOGRAM;
+
+  const hours = Array.from({ length: 24 }, () => 0);
+  let total = 0;
+
+  for (const entry of chatHistory) {
+    const date = dateFromTimestamp(entry.timestamp);
+    if (!date) continue;
+
+    hours[date.getHours()] += 1;
+    total += 1;
+  }
+
+  return {
+    hours,
+    peak: summarizePeakHour(hours),
+    total,
+  };
 }
 
 interface StatsPanelProps {
@@ -78,6 +125,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       character.memorySentiment ?? EMPTY_MEMORY_SENTIMENT,
     );
   }, [character.chatSentiment, character.memorySentiment]);
+  const talkHistogram = useMemo(() => buildTalkHistogram(character.chatHistory), [character.chatHistory]);
   const momentsLoading =
     character.isChatSentimentLoading ||
     (character.isMemorySentimentLoading && !character.memorySentiment && !character.memorySentimentError);
@@ -217,7 +265,19 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       </Block>
 
       <Block icon={<Clock size={15} />} title="When you two talk">
-        <Heatmap hours={character.hours} peak={character.peak} />
+        {!character.isChatHistoryLoaded ? (
+          <SectionSpinner label="Mapping talk rhythm" />
+        ) : character.chatHistoryError ? (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            Talk pattern unavailable: {character.chatHistoryError}
+          </p>
+        ) : talkHistogram.total > 0 ? (
+          <Heatmap hours={talkHistogram.hours} peak={talkHistogram.peak} />
+        ) : (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            No chat history yet.
+          </p>
+        )}
       </Block>
 
       <Block icon={<Smile size={15} />} title="Their read on you">
