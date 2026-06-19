@@ -2,14 +2,14 @@
  * bondScore.ts
  *
  * Standalone, dependency-free scoring of conversational "Warmth" and "Depth"
- * from per-sentence multi-label sentiment data (GoEmotions-style).
+ * from per-entry multi-label sentiment data (GoEmotions-style).
  *
  *   Warmth = signed valence weighted toward affiliation (affection up, hostility down).
  *   Depth  = emotional intensity / vulnerability, valence-blind. Neutral chitchat is the
  *            penalty term that pulls depth down.
  *
  * Both axes start at 50 (the no-information baseline) and drift as the conversation
- * accumulates, via a per-sentence exponential moving average. The result also reports a
+ * accumulates, via a per-entry exponential moving average. The result also reports a
  * trend (net change over the analysed span) plus the timespan it covers.
  *
  * Everything is pure: same input -> same output. Tune the WEIGHTS / CONFIG to taste.
@@ -21,8 +21,8 @@ import { SENTIMENT_THRESHOLDS, type SentimentValues } from "@layla-network/sdk";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ScoredSentence {
-  sentence: string;
+export interface ScoredText {
+  text: string;
   /** Epoch milliseconds. */
   timestamp: number;
   sentimentValue: SentimentValues;
@@ -43,7 +43,7 @@ export interface BondResult {
 }
 
 export interface BondConfig {
-  /** Per-sentence learning rate for the EMA. Smaller = smoother / slower to move. */
+  /** Per-entry learning rate for the EMA. Smaller = smoother / slower to move. */
   alpha: number;
   /** How quickly warmth saturates toward 0/100. */
   warmthGain: number;
@@ -67,7 +67,7 @@ export interface BondConfig {
 //           vulnerable emotions (grief, fear, remorse...) are near zero, NOT cold —
 //           sharing pain with someone is not unfriendly.
 //   Depth:  mostly POSITIVE. Vulnerable / heavy emotions score highest; banter low.
-//           "neutral" has no depth weight, so neutral sentences contribute 0 depth.
+//           "neutral" has no depth weight, so neutral entries contribute 0 depth.
 // ---------------------------------------------------------------------------
 
 export const WARMTH_WEIGHTS: Record<string, number> = {
@@ -115,7 +115,7 @@ const clamp = (x: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, x));
 const squash = (raw: number, gain: number) => 50 + 50 * Math.tanh(gain * raw);
 
 /**
- * Per-sentence axis contributions.
+ * Per-entry axis contributions.
  *   warmthRaw: signed sum of (activation * warmthWeight) over emotions that clear threshold.
  *   depthRaw:  non-negative sum of (activation * depthWeight) for the same.
  */
@@ -137,23 +137,23 @@ function scoreSentence(s: SentimentValues): { warmthRaw: number; depthRaw: numbe
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the bond from scored sentences.
+ * Compute the bond from scored text entries.
  *
- * @param sentences  Per-sentence sentiment, in any order (sorted internally by timestamp).
+ * @param entries  Per-entry sentiment, in any order (sorted internally by timestamp).
  * @param config     Optional overrides; merged over DEFAULT_CONFIG.
  */
 export function computeBond(
-  sentences: ScoredSentence[],
+  entries: ScoredText[],
   config: Partial<BondConfig> = {},
 ): BondResult {
   const cfg: BondConfig = { ...DEFAULT_CONFIG, ...config };
 
   // No data -> pure baseline.
-  if (sentences.length === 0) {
+  if (entries.length === 0) {
     return { warmth: 50, depth: 50, trend: { difference: 0, timespanWeeks: 0, timespanDays: 0 } };
   }
 
-  const ordered = [...sentences].sort((a, b) => a.timestamp - b.timestamp);
+  const ordered = [...entries].sort((a, b) => a.timestamp - b.timestamp);
 
   let warmth = 50;
   let depth = 50;

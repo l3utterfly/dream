@@ -8,7 +8,7 @@ import LaylaSDK, {
   type LaylaMemory,
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
-import { computeBond, type ScoredSentence } from "../libs/computeBond";
+import { computeBond, type ScoredText } from "../libs/computeBond";
 import type { Character, ChatSentimentData, MemorySentimentData } from "../types";
 
 const PAGE_SIZE = 1;
@@ -35,6 +35,10 @@ function shortText(value: string, maxLength: number) {
 function cleanMemoryText(memory: LaylaMemory) {
   const text = (memory.summary ?? memory.rawText).trim().replace(/\s+/g, " ");
   return text;
+}
+
+function cleanScoredText(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") ?? "";
 }
 
 function lastSentenceFromMemory(memory: LaylaMemory) {
@@ -108,50 +112,48 @@ async function computeChatSentimentFromChatHistory(
   chatHistory: LaylaChatHistoryEntry[],
   signal: AbortSignal,
 ): Promise<ChatSentimentData> {
-  const scoredSentences: ScoredSentence[] = [];
+  const scoredTexts: ScoredText[] = [];
 
   for (const entry of chatHistory) {
-    const sentences = splitSentences(entry.content);
+    const text = cleanScoredText(entry.content);
+    if (!text) continue;
 
-    for (const sentence of sentences) {
-      const sentimentValue = await layla.classifier.getSentiment(sentence, {
-        signal,
-      });
+    const sentimentValue = await layla.classifier.getSentiment(text, {
+      signal,
+    });
 
-      scoredSentences.push({
-        sentence,
-        timestamp: entry.timestamp,
-        sentimentValue,
-      });
-    }
+    scoredTexts.push({
+      text,
+      timestamp: entry.timestamp,
+      sentimentValue,
+    });
   }
 
-  return { scoredSentences };
+  return { scoredTexts };
 }
 
 async function computeMemorySentimentFromMemories(
   memories: LaylaMemory[],
   signal: AbortSignal,
 ): Promise<MemorySentimentData> {
-  const scoredSentences: ScoredSentence[] = [];
+  const scoredTexts: ScoredText[] = [];
 
   for (const memory of memories) {
-    const sentences = splitSentences(cleanMemoryText(memory));
+    const text = cleanScoredText(cleanMemoryText(memory));
+    if (!text) continue;
 
-    for (const sentence of sentences) {
-      const sentimentValue = await layla.classifier.getSentiment(sentence, {
-        signal,
-      });
+    const sentimentValue = await layla.classifier.getSentiment(text, {
+      signal,
+    });
 
-      scoredSentences.push({
-        sentence,
-        timestamp: memory.timestamp,
-        sentimentValue,
-      });
-    }
+    scoredTexts.push({
+      text,
+      timestamp: memory.timestamp,
+      sentimentValue,
+    });
   }
 
-  return { scoredSentences };
+  return { scoredTexts };
 }
 
 function toCompanion(character: LaylaCharacter, index: number, image: string | null): Character {
@@ -297,7 +299,7 @@ export function useLaylaCompanions() {
 
           try {
             const chatSentiment = await chatSentimentPromise;
-            const bond = computeBond(chatSentiment.scoredSentences);
+            const bond = computeBond(chatSentiment.scoredTexts);
             console.log(`Computed bond for ${character.id}:`, bond);
 
             setCompanions((current) =>

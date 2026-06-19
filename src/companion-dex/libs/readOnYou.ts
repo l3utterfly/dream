@@ -120,7 +120,7 @@ export function getMemories(character: Character) {
 
   const moments = selectMomentsWorthKeeping(
     character.chatSentiment,
-    character.memorySentiment ?? { scoredSentences: [] },
+    character.memorySentiment ?? { scoredTexts: [] },
   );
   const summaries = moments
     .map((moment) => cleanPromptValue(moment.summary ?? undefined))

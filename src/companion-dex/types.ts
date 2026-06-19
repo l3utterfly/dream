@@ -1,5 +1,5 @@
 import type { LaylaChatHistoryEntry, LaylaMemory } from "@layla-network/sdk";
-import type { BondResult, ScoredSentence } from "./libs/computeBond";
+import type { BondResult, ScoredText } from "./libs/computeBond";
 
 export type Mood = "happy" | "content" | "excited" | "sad" | "lonely" | "sleepy";
 export type Shape = "sun" | "cat" | "drop" | "moon";
@@ -11,11 +11,11 @@ export interface Theme {
 }
 
 export interface ChatSentimentData {
-  scoredSentences: ScoredSentence[];
+  scoredTexts: ScoredText[];
 }
 
 export interface MemorySentimentData {
-  scoredSentences: ScoredSentence[];
+  scoredTexts: ScoredText[];
 }
 
 export interface Character {

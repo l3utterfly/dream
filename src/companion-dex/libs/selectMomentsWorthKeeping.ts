@@ -2,7 +2,7 @@
  * Selects the top "Moments Worth Keeping" for a character card.
  *
  * Pipeline:
- *   1. Score every raw chat sentence using a GoEmotions-weighted payload that
+ *   1. Score every raw chat entry using a GoEmotions-weighted payload that
  *      rewards warm/poignant tone, penalises neutral + negative tone, gates out
  *      diffuse low-confidence sentiment, prefers quotable lengths, and applies a
  *      gentle recency decay.
@@ -16,7 +16,7 @@
  */
 
 import { SENTIMENT_THRESHOLDS, type SentimentValues } from "@layla-network/sdk";
-import type { ScoredSentence } from "./computeBond";
+import type { ScoredText } from "./computeBond";
 import type { ChatSentimentData, MemorySentimentData } from "../types";
 
 // ---------- Output ----------
@@ -39,13 +39,13 @@ export interface MomentConfig {
     count: number;
     /** Minimum time gap between any two chosen quotes (ms). */
     minSpacingMs: number;
-    /** A sentence's strongest "keepable" emotion must clear this to qualify at all. */
+    /** An entry's strongest "keepable" emotion must clear this to qualify at all. */
     peakThreshold: number;
     /** Recency half-life (ms). Larger = flatter, less recency bias. */
     recencyHalfLifeMs: number;
     /** Floor for the recency multiplier so old gems aren't zeroed out. */
     recencyFloor: number;
-    /** Max time gap (ms) for a memory sentence to be a "good" summary match. */
+    /** Max time gap (ms) for a memory entry to be a "good" summary match. */
     summaryWindowMs: number;
 }
 
@@ -75,7 +75,7 @@ function wordCount(s: string): number {
     return m ? m.length : 0;
 }
 
-/** Weighted emotional payload + the strongest keepable activation in the sentence. */
+/** Weighted emotional payload + the strongest keepable activation in the entry. */
 function emotionalScore(sentiment: SentimentValues): { base: number; peakKeepable: number } {
     let base = 0;
     let peakKeepable = 0;
@@ -114,7 +114,7 @@ function normalize(s: string): string {
     return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function latestTimestamp(...lists: ScoredSentence[][]): number {
+function latestTimestamp(...lists: ScoredText[][]): number {
     let max = 0;
     for (const list of lists) {
         for (const s of list) {
@@ -126,17 +126,17 @@ function latestTimestamp(...lists: ScoredSentence[][]): number {
 
 /**
  * Picks the summary line for a quote.
- * Prefers the most emotionally resonant memory sentence within `windowMs` of the
+ * Prefers the most emotionally resonant memory entry within `windowMs` of the
  * quote; if none fall in-window, falls back to the single closest in time.
  */
 function pickSummary(
     quoteTs: number,
-    memorySentences: ScoredSentence[],
+    memoryTexts: ScoredText[],
     windowMs: number,
 ): string | null {
-    if (memorySentences.length === 0) return null;
+    if (memoryTexts.length === 0) return null;
 
-    const inWindow = memorySentences.filter(
+    const inWindow = memoryTexts.filter(
         (m) => Math.abs(m.timestamp - quoteTs) <= windowMs,
     );
 
@@ -150,26 +150,26 @@ function pickSummary(
                 bestScore = s;
             }
         }
-        return best.sentence;
+        return best.text;
     }
 
     // Fallback: closest in time.
-    let nearest = memorySentences[0];
+    let nearest = memoryTexts[0];
     let nearestDist = Math.abs(nearest.timestamp - quoteTs);
-    for (let i = 1; i < memorySentences.length; i++) {
-        const d = Math.abs(memorySentences[i].timestamp - quoteTs);
+    for (let i = 1; i < memoryTexts.length; i++) {
+        const d = Math.abs(memoryTexts[i].timestamp - quoteTs);
         if (d < nearestDist) {
-            nearest = memorySentences[i];
+            nearest = memoryTexts[i];
             nearestDist = d;
         }
     }
-    return nearest.sentence;
+    return nearest.text;
 }
 
 // ---------- Main ----------
 
 interface Candidate {
-    sentence: ScoredSentence;
+    text: ScoredText;
     score: number;
 }
 
@@ -180,18 +180,18 @@ export function selectMomentsWorthKeeping(
 ): KeptMoment[] {
     const cfg = { ...DEFAULT_CONFIG, ...config };
 
-    const chatSentences = chat?.scoredSentences ?? [];
-    const memorySentences = memory?.scoredSentences ?? [];
-    if (chatSentences.length === 0) return [];
+    const chatTexts = chat?.scoredTexts ?? [];
+    const memoryTexts = memory?.scoredTexts ?? [];
+    if (chatTexts.length === 0) return [];
 
     // Reference "now" = latest activity across both datasets, so decay tracks the
     // conversation rather than wall-clock time (which matters if the data is stale).
-    const now = latestTimestamp(chatSentences, memorySentences) || Date.now();
+    const now = latestTimestamp(chatTexts, memoryTexts) || Date.now();
 
-    // 1. Score every chat sentence; drop anything that fails the intensity gate.
+    // 1. Score every chat text; drop anything that fails the intensity gate.
     const candidates: Candidate[] = [];
-    for (const sentence of chatSentences) {
-        const { base, peakKeepable } = emotionalScore(sentence.sentimentValue);
+    for (const text of chatTexts) {
+        const { base, peakKeepable } = emotionalScore(text.sentimentValue);
 
         // Gate: requires a confident keepable emotion AND net-positive tone.
         if (peakKeepable < cfg.peakThreshold || base <= 0) continue;
@@ -199,10 +199,10 @@ export function selectMomentsWorthKeeping(
         const score =
             base *
             peakKeepable * // reward confident emotion over diffuse noise
-            lengthMultiplier(wordCount(sentence.sentence)) *
-            recencyMultiplier(sentence.timestamp, now, cfg.recencyHalfLifeMs, cfg.recencyFloor);
+            lengthMultiplier(wordCount(text.text)) *
+            recencyMultiplier(text.timestamp, now, cfg.recencyHalfLifeMs, cfg.recencyFloor);
 
-        candidates.push({ sentence, score });
+        candidates.push({ text, score });
     }
 
     if (candidates.length === 0) return [];
@@ -216,12 +216,12 @@ export function selectMomentsWorthKeeping(
     for (const candidate of candidates) {
         if (chosen.length >= cfg.count) break;
 
-        const norm = normalize(candidate.sentence.sentence);
+        const norm = normalize(candidate.text.text);
         if (seen.has(norm)) continue;
 
         const tooClose = chosen.some(
             (c) =>
-                Math.abs(c.sentence.timestamp - candidate.sentence.timestamp) <
+                Math.abs(c.text.timestamp - candidate.text.timestamp) <
                 cfg.minSpacingMs,
         );
         if (tooClose) continue;
@@ -232,9 +232,9 @@ export function selectMomentsWorthKeeping(
 
     // 4. Correlate each quote with a memory-derived summary by timestamp.
     return chosen.map((c) => ({
-        quote: c.sentence.sentence,
-        summary: pickSummary(c.sentence.timestamp, memorySentences, cfg.summaryWindowMs),
-        timestamp: c.sentence.timestamp,
+        quote: c.text.text,
+        summary: pickSummary(c.text.timestamp, memoryTexts, cfg.summaryWindowMs),
+        timestamp: c.text.timestamp,
         score: c.score,
     }));
 }

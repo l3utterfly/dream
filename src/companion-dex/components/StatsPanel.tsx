@@ -32,7 +32,7 @@ import { Avatar } from "./Avatar";
 import { Bar, Block, Heatmap, SectionSpinner, Vital } from "./MetricSections";
 import { CountNum } from "./CountNum";
 
-const EMPTY_MEMORY_SENTIMENT: MemorySentimentData = { scoredSentences: [] };
+const EMPTY_MEMORY_SENTIMENT: MemorySentimentData = { scoredTexts: [] };
 const EMPTY_TALK_HISTOGRAM = {
   hours: Array.from({ length: 24 }, () => 0),
   peak: "whenever you return",
@@ -224,9 +224,9 @@ function countLongestDayStreak(chatHistory: Character["chatHistory"]) {
 function countUniqueHighIntensityEmotions(character: Character) {
   const emotions = new Set<string>();
 
-  for (const sentence of character.chatSentiment?.scoredSentences ?? []) {
+  for (const scoredText of character.chatSentiment?.scoredTexts ?? []) {
     for (const [emotion, intensity] of Object.entries(
-      sentence.sentimentValue,
+      scoredText.sentimentValue,
     )) {
       if (emotion !== "neutral" && intensity > 0.5) {
         emotions.add(emotion);
