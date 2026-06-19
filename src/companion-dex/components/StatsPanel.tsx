@@ -25,7 +25,11 @@ import LaylaSDK, {
 } from "@layla-network/sdk";
 import { eng, removeStopwords } from "stopword";
 import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
-import { buildReadOnYouMessages } from "../libs/readOnYou";
+import {
+  buildReadOnYouMessages,
+  getCharacterName,
+  getUserName,
+} from "../libs/readOnYou";
 import type { Character, MemorySentimentData, Theme } from "../types";
 import { Avatar } from "./Avatar";
 import { Bar, Block, Heatmap, SectionSpinner, Vital } from "./MetricSections";
@@ -263,12 +267,13 @@ function tokenizePrivateLanguage(text: string) {
   );
 }
 
-function characterNameStopwords(name: string) {
-  return tokenizePrivateLanguage(name);
+function nameStopwords(...names: string[]) {
+  return names.flatMap((name) => tokenizePrivateLanguage(name));
 }
 
 function buildPrivateLanguageWords(
   characterName: string,
+  userName: string,
   chatHistory: Character["chatHistory"],
   recentMemories: Character["recentMemories"],
 ): PrivateLanguageWord[] {
@@ -280,7 +285,7 @@ function buildPrivateLanguageWords(
   const stopwords = [
     ...eng,
     ...EXTRA_PRIVATE_LANGUAGE_STOPWORDS,
-    ...characterNameStopwords(characterName),
+    ...nameStopwords(characterName, userName),
   ];
   const words = removeStopwords(tokens, stopwords);
   const counts = new Map<string, number>();
@@ -328,14 +333,17 @@ function seededRandom(seedText: string) {
 }
 
 function PrivateLanguageCloud({ character }: { character: Character }) {
+  const characterName = getCharacterName(character);
+  const userName = getUserName(character);
   const words = useMemo(
     () =>
       buildPrivateLanguageWords(
-        character.name,
+        characterName,
+        userName,
         character.chatHistory,
         character.recentMemories,
       ),
-    [character.chatHistory, character.name, character.recentMemories],
+    [character.chatHistory, characterName, character.recentMemories, userName],
   );
   const layoutSeed = useMemo(
     () =>
