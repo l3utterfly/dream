@@ -5,11 +5,12 @@ import { CountNum } from "./CountNum";
 interface LabelProps {
   icon: ReactNode;
   children: ReactNode;
+  compact?: boolean;
 }
 
-export function Label({ icon, children }: LabelProps) {
+export function Label({ icon, children, compact = false }: LabelProps) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: compact ? 0 : 16 }}>
       <span style={{ color: "var(--primary)", display: "inline-flex", transition: "color .5s" }}>{icon}</span>
       <h3 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-2)" }}>{children}</h3>
     </div>
@@ -20,17 +21,26 @@ interface BlockProps {
   icon: ReactNode;
   title: string;
   children: ReactNode;
+  action?: ReactNode;
 }
 
-export function Block({ icon, title, children }: BlockProps) {
+export function Block({ icon, title, children, action }: BlockProps) {
   return (
     <section style={{ marginTop: 38, paddingTop: 38, borderTop: "1px solid var(--hair)" }}>
-      <Label icon={icon}>{title}</Label>
+      {action ? (
+        <div className="cd-section-heading-row">
+          <Label icon={icon} compact>
+            {title}
+          </Label>
+          {action}
+        </div>
+      ) : (
+        <Label icon={icon}>{title}</Label>
+      )}
       {children}
     </section>
   );
 }
-
 interface SectionSpinnerProps {
   label: string;
 }

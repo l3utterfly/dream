@@ -237,6 +237,143 @@
   transition: color .5s;
 }
 
+.cd-section-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cd-reflect-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 50%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .2s, background-color .2s, color .5s, opacity .2s, transform .15s;
+}
+
+.cd-reflect-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+  transform: translateY(-1px);
+}
+
+.cd-reflect-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.cd-reflect-button:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.cd-reflection-text {
+  margin: 0;
+  color: var(--ink-1);
+  font-size: 15.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.cd-reflection-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.1em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  border-radius: 99px;
+  background: var(--primary);
+  animation: cdReflectionCaret 0.9s steps(2, jump-none) infinite;
+}
+
+.cd-reflection-loading {
+  min-height: 96px;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 18% 26%, color-mix(in srgb, var(--primary) 24%, transparent), transparent 34%),
+    var(--chip);
+  overflow: hidden;
+}
+
+.cd-reflection-orbit {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  animation: cdReflectionOrbit 1.9s linear infinite;
+}
+
+.cd-reflection-orbit span {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+.cd-reflection-orbit span:nth-child(1) {
+  top: -4px;
+  left: 13px;
+}
+
+.cd-reflection-orbit span:nth-child(2) {
+  right: 0;
+  bottom: 3px;
+  opacity: 0.72;
+}
+
+.cd-reflection-orbit span:nth-child(3) {
+  left: 0;
+  bottom: 3px;
+  opacity: 0.48;
+}
+
+.cd-reflection-shimmer {
+  position: relative;
+  height: 12px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  overflow: hidden;
+}
+
+.cd-reflection-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 38%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: cdReflectionShimmer 1.35s ease-in-out infinite;
+}
+
+.cd-reflection-shimmer-short {
+  width: 62%;
+  grid-column: 2;
+  margin-top: -22px;
+}
+
+.cd-reflection-error {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
 .cd-vital-button {
   flex: 1;
   min-width: 0;
@@ -404,6 +541,30 @@
   }
 }
 
+
+@keyframes cdReflectionCaret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes cdReflectionOrbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cdReflectionShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .cd-float,
   .cd-mood-dot,

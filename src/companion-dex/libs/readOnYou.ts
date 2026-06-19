@@ -1,5 +1,6 @@
 import { selectMomentsWorthKeeping } from "./selectMomentsWorthKeeping";
 import type { Character } from "../types";
+import type { LaylaChatMessage } from "@layla-network/sdk";
 
 export type ReadOnYouStage = "occasionally chatting" | "frequently chatting" | "always chatting";
 
@@ -12,6 +13,12 @@ function cleanPromptValue(value: string | undefined) {
 
 function timestampMs(timestamp: number) {
   return timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp;
+}
+
+export function getUserName(character: Character) {
+    // find the first chat history where character_id == 'user'
+    const userEntry = character.chatHistory.find((entry) => entry.character_id === "user");
+    return userEntry?.name ?? "User";
 }
 
 export function getCharacterName(character: Character) {
@@ -66,8 +73,9 @@ export function humaniseDuration(seconds: number): string {
       const days = Math.floor(seconds / 86400);
       return `${days.toFixed(0)} days`;
     }
-  } catch (err: any) {
-    console.warn(err.message + " - " + seconds.toString());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to humanise duration";
+    console.warn(message + " - " + seconds.toString());
     return seconds.toString();
   }
 }
@@ -102,7 +110,8 @@ export function getWarmthAndDepth(character: Character) {
     }
 }
 
-export function getPreviousImpression(_character: Character) {
+export function getPreviousImpression(character: Character) {
+    void character;
     return 'No previous impression yet.';
 }
 
@@ -127,7 +136,7 @@ export function getEmotions(character: Character) {
     if(character.vitals.energy < 30) e = 'Sleepy';
     else if(character.vitals.energy > 70) e = 'Energetic';
     
-    let f = 'Normal';
+    const f = 'Normal';
     if(character.vitals.fed < 30) e += 'Hungry';
     else if(character.vitals.fed > 70) e += 'Well-fed';
 
@@ -186,4 +195,37 @@ Moments that stood out:
 Current emotions: {{emotions}}
 
 Recent exchange (for texture, optional):
-{{recent_memory}}`;
+{{recent_memory}}
+
+Write a concise impression of {{user}} from {{char}}'s point of view, following the SYSTEM instructions. Write in the first person, as if you are {{char}}. Only write a short paragraph — 2-3 sentences — that captures your current impression of {{user}} based on your shared history so far.`;
+
+function renderPromptTemplate(template: string, values: Record<string, string>) {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_match, key: string) => values[key.trim()] ?? "");
+}
+
+export function buildReadOnYouMessages(character: Character): LaylaChatMessage[] {
+  const values = {
+    user: getUserName(character),
+    char: getCharacterName(character),
+    description: getCharacterDescription(character),
+    personality: getCharacterPersonality(character),
+    stage: getStage(character),
+    time_together: getTimeTogether(character),
+    warmth_and_depth: getWarmthAndDepth(character),
+    previous_impression: getPreviousImpression(character),
+    memories: getMemories(character),
+    emotions: getEmotions(character),
+    recent_memory: getRecentMemory(character),
+  };
+
+  return [
+    {
+      role: "system",
+      content: renderPromptTemplate(SYSTEM_PROMPT, values),
+    },
+    {
+      role: "user",
+      content: renderPromptTemplate(USER_INSTRUCTION, values),
+    },
+  ];
+}
