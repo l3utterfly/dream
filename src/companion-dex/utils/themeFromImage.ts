@@ -2,6 +2,7 @@ import { extractColors } from "extract-colors";
 import type { Theme } from "../types";
 
 type ExtractedColor = Awaited<ReturnType<typeof extractColors>>[number];
+const PANEL_ALPHA_HEX = "99";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(Math.max(value, min), max);
@@ -88,7 +89,7 @@ function colorToTheme(colors: ExtractedColor[]): Theme | null {
     deep: hslToHex(accent.hue, saturation, 0.7),
     glow: hslToHex(accent.hue, clamp(saturation * 0.76, 0.42, 0.7), 0.78),
     page: mixHex(base, "#161617", 0.44),
-    panel: `${panel}e8`,
+    panel: `${panel}${PANEL_ALPHA_HEX}`,
     panelBorder: `color-mix(in srgb, ${hslToHex(accent.hue, saturation, 0.72)} 24%, transparent)`,
     panelShadow: `0 -22px 54px -22px ${mixHex(base, "#000000", 0.46)}d9`,
     track: mixHex(chip, "#242424", 0.42),

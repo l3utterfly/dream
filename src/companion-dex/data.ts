@@ -22,7 +22,7 @@ export const DISPLAY_PROFILES: DisplayProfile[] = [
       deep: "#d4d4d8",
       glow: "#ffffff",
       page: "#101011",
-      panel: "rgba(18, 18, 20, 0.88)",
+      panel: "rgba(18, 18, 20, 0.6)",
       panelBorder: "rgba(255, 255, 255, 0.08)",
       panelShadow: "0 -20px 50px -20px rgba(0, 0, 0, 0.72)",
       track: "#2a2a2e",

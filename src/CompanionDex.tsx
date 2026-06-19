@@ -15,7 +15,7 @@ const companionDexVars = (theme: Theme) =>
     "--deep": theme.deep,
     "--glow": theme.glow,
     "--page": theme.page ?? "#1c1c1c",
-    "--panel": theme.panel ?? "rgba(20, 20, 22, 0.82)",
+    "--panel": theme.panel ?? "rgba(20, 20, 22, 0.6)",
     "--panel-border": theme.panelBorder ?? "rgba(255, 255, 255, 0.06)",
     "--panel-shadow": theme.panelShadow ?? "0 -20px 50px -20px rgba(0, 0, 0, 0.6)",
     "--track": theme.track ?? "#333333",
