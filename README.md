@@ -141,6 +141,14 @@ if (import.meta.env.DEV) {
 }
 ```
 
+This project wires the chat mock to a local OpenAI-compatible streaming API by default. It sends raw `fetch` requests to `/v1/chat/completions` with `stream: true`; no OpenAI SDK is imported. Configure it with Vite env vars:
+
+```bash
+VITE_LAYLA_OPENAI_MOCK_ENDPOINT=http://localhost:1234/v1/chat/completions
+VITE_LAYLA_OPENAI_MOCK_MODEL=local-model
+VITE_LAYLA_OPENAI_MOCK_API_KEY=
+```
+
 Keep this guarded by `import.meta.env.DEV` so the mock is not used in the production bundle.
 
 ## Building for Layla
