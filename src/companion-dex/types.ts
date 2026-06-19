@@ -37,12 +37,11 @@ export interface Character {
   image?: string;
   theme: Theme;
   mood: Mood;
-  moodReason: string;
+  mainMood: string;
   warmth: number;
   depth: number;
   trajectory: number[];
   daysKnown: number;
-  firstMet: string;
   lastChat: string;
   latestChatSessionId?: string;
   chatHistory: LaylaChatHistoryEntry[];

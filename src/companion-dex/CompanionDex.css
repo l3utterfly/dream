@@ -161,7 +161,6 @@
   padding: 2px 24px 8px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
-  scroll-snap-type: x mandatory;
   scrollbar-width: none;
   touch-action: pan-x;
 }

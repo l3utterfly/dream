@@ -242,7 +242,9 @@ function cleanPrivateLanguageText(value: string | null | undefined) {
 
 function hasPrivateLanguageSource(character: Character) {
   return (
-    character.chatHistory.some((entry) => cleanPrivateLanguageText(entry.content)) ||
+    character.chatHistory.some((entry) =>
+      cleanPrivateLanguageText(entry.content),
+    ) ||
     character.recentMemories.some((memory) =>
       cleanPrivateLanguageText(memory.summary ?? memory.rawText),
     )
@@ -346,8 +348,7 @@ function PrivateLanguageCloud({ character }: { character: Character }) {
     seed: string;
     words: PrivateLanguageWord[];
   } | null>(null);
-  const layoutWords =
-    layoutState?.seed === layoutSeed ? layoutState.words : [];
+  const layoutWords = layoutState?.seed === layoutSeed ? layoutState.words : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -424,7 +425,8 @@ function PrivateLanguageCloud({ character }: { character: Character }) {
                 }}
               >
                 <title>
-                  {word.text} · {word.value} {word.value === 1 ? "time" : "times"}
+                  {word.text} · {word.value}{" "}
+                  {word.value === 1 ? "time" : "times"}
                 </title>
                 {word.text}
               </text>
@@ -662,9 +664,10 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
         >
           <span className="cd-mood-dot" />
           <span>
-            <strong style={{ color: "var(--deep)" }}>
-              {character.mood}
-            </strong>
+            <strong style={{ color: "var(--deep)", textTransform: "capitalize" }}>
+              {character.mainMood}
+            </strong>{" "}
+            — From last message
           </span>
         </p>
         <div
@@ -685,7 +688,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
           </span>
           <span>·</span>
           <span>
-            {character.daysKnown} days · since {character.firstMet}
+            {character.daysKnown} days
           </span>
         </div>
       </div>

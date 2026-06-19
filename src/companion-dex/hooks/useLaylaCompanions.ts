@@ -3,9 +3,11 @@ import LaylaSDK, {
   LaylaAbortError,
   LaylaBridgeUnavailableError,
   LaylaError,
+  SENTIMENT_THRESHOLDS,
   type LaylaChatHistoryEntry,
   type LaylaCharacter,
   type LaylaMemory,
+  type SentimentValues,
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
 import { computeBond, type ScoredText } from "../libs/computeBond";
@@ -17,6 +19,10 @@ const TOP_MEMORY_LIMIT = 3;
 const RECENT_MEMORY_LIMIT = 50;
 const OPEN_THREAD_LIMIT = 3;
 const layla = new LaylaSDK();
+const NEUTRAL_SENTIMENT = "neutral";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type SentimentName = keyof SentimentValues;
 
 function imageFromCharacterCard(character: LaylaCharacter) {
   const image = character.data.data.extensions.image;
@@ -39,6 +45,100 @@ function cleanMemoryText(memory: LaylaMemory) {
 
 function cleanScoredText(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, " ") ?? "";
+}
+
+function timestampMilliseconds(timestamp: number | null | undefined) {
+  if (timestamp == null || !Number.isFinite(timestamp)) return null;
+
+  return Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+}
+
+function formatLastChat(timestampMs: number | null) {
+  if (timestampMs == null) return "no chat yet";
+
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return "no chat yet";
+
+  const elapsedMs = Date.now() - timestampMs;
+  if (elapsedMs < 0) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
+
+  if (elapsedMs < 60 * 1000) return "just now";
+  if (elapsedMs < 60 * 60 * 1000) return `${Math.floor(elapsedMs / (60 * 1000))}m ago`;
+  if (elapsedMs < DAY_MS) return `${Math.floor(elapsedMs / (60 * 60 * 1000))}h ago`;
+  if (elapsedMs < 7 * DAY_MS) return `${Math.floor(elapsedMs / DAY_MS)}d ago`;
+
+  const options: Intl.DateTimeFormatOptions =
+    date.getFullYear() === new Date().getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+
+  return new Intl.DateTimeFormat(undefined, options).format(date);
+}
+
+function daysKnownFromFirstChat(timestampMs: number | null) {
+  if (timestampMs == null) return 0;
+
+  const firstChatDate = new Date(timestampMs);
+  if (Number.isNaN(firstChatDate.getTime())) return 0;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstChatDay = new Date(firstChatDate);
+  firstChatDay.setHours(0, 0, 0, 0);
+
+  return Math.max(0, Math.floor((today.getTime() - firstChatDay.getTime()) / DAY_MS));
+}
+
+function chatTimingFromHistory(
+  chatHistory: LaylaChatHistoryEntry[],
+  latestChatTimestamp: number | null,
+) {
+  const timestamps = chatHistory
+    .map((entry) => timestampMilliseconds(entry.timestamp))
+    .filter((timestamp): timestamp is number => timestamp !== null);
+  const firstChatTimestamp = timestamps.length > 0 ? Math.min(...timestamps) : null;
+  const lastChatTimestamp =
+    latestChatTimestamp ??
+    (timestamps.length > 0 ? Math.max(...timestamps) : null);
+
+  return {
+    daysKnown: daysKnownFromFirstChat(firstChatTimestamp),
+    lastChat: formatLastChat(lastChatTimestamp),
+  };
+}
+
+function formatSentimentName(sentiment: SentimentName) {
+  return sentiment.replace(/_/g, " ");
+}
+
+function dominantSentiment(sentimentValue: SentimentValues): SentimentName {
+  let bestSentiment: SentimentName | null = null;
+  let bestValue = -Infinity;
+
+  for (const emotion of Object.keys(sentimentValue) as SentimentName[]) {
+    if (emotion === NEUTRAL_SENTIMENT) continue;
+
+    const value = sentimentValue[emotion];
+    const threshold = SENTIMENT_THRESHOLDS[emotion] ?? 1;
+    if (value < threshold || value <= bestValue) continue;
+
+    bestSentiment = emotion;
+    bestValue = value;
+  }
+
+  return bestSentiment ?? NEUTRAL_SENTIMENT;
+}
+
+function mainMoodFromSentiment(sentimentValue: SentimentValues) {
+  return formatSentimentName(dominantSentiment(sentimentValue));
 }
 
 function lastSentenceFromMemory(memory: LaylaMemory) {
@@ -85,6 +185,7 @@ async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
     signal,
   });
   const latestChatSessionId = sessions[0]?.session_id;
+  const latestChatTimestamp = timestampMilliseconds(sessions[0]?.last_message_timestamp);
   const chatHistory: LaylaChatHistoryEntry[] = [];
 
   for (const session of sessions) {
@@ -104,6 +205,7 @@ async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
 
   return {
     latestChatSessionId,
+    latestChatTimestamp,
     chatHistory,
   };
 }
@@ -111,6 +213,7 @@ async function loadRecentChatHistory(characterId: string, signal: AbortSignal) {
 async function computeChatSentimentFromChatHistory(
   chatHistory: LaylaChatHistoryEntry[],
   signal: AbortSignal,
+  onScoredText?: (scoredText: ScoredText) => void,
 ): Promise<ChatSentimentData> {
   const scoredTexts: ScoredText[] = [];
 
@@ -122,11 +225,14 @@ async function computeChatSentimentFromChatHistory(
       signal,
     });
 
-    scoredTexts.push({
+    const scoredText = {
       text,
       timestamp: entry.timestamp,
       sentimentValue,
-    });
+    };
+
+    scoredTexts.push(scoredText);
+    onScoredText?.(scoredText);
   }
 
   return { scoredTexts };
@@ -171,10 +277,9 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     id: character.id,
     name,
     image: cardImage ?? image ?? undefined,
-    moodReason: `No mood reason`,
-    daysKnown: 1,
-    firstMet: "today",
-    lastChat: "just now",
+    mainMood: "reading latest message",
+    daysKnown: 0,
+    lastChat: "loading...",
     chatHistory: [],
     isChatHistoryLoaded: false,
     isChatSentimentLoading: true,
@@ -273,11 +378,29 @@ export function useLaylaCompanions() {
       chatHistoryAbortControllersRef.current.add(controller);
 
       void loadRecentChatHistory(character.id, controller.signal)
-        .then(async ({ latestChatSessionId, chatHistory }) => {
+        .then(async ({ latestChatSessionId, latestChatTimestamp, chatHistory }) => {
+          let hasSetLatestMood = false;
+          const chatTiming = chatTimingFromHistory(chatHistory, latestChatTimestamp);
           const chatSentimentPromise = computeChatSentimentFromChatHistory(
             chatHistory,
             controller.signal,
+            (scoredText) => {
+              if (hasSetLatestMood) return;
+
+              hasSetLatestMood = true;
+              const mainMood = mainMoodFromSentiment(scoredText.sentimentValue);
+
+              setCompanions((current) =>
+                current.map((companion) =>
+                  companion.id === character.id ? { ...companion, mainMood } : companion,
+                ),
+              );
+            },
           );
+          const fallbackMainMood =
+            chatHistory.some((entry) => cleanScoredText(entry.content))
+              ? "reading latest message"
+              : "no chat yet";
 
           setCompanions((current) =>
             current.map((companion) =>
@@ -286,6 +409,9 @@ export function useLaylaCompanions() {
                     ...companion,
                     latestChatSessionId,
                     chatHistory,
+                    daysKnown: chatTiming.daysKnown,
+                    lastChat: chatTiming.lastChat,
+                    mainMood: fallbackMainMood,
                     isChatHistoryLoaded: true,
                     chatHistoryError: undefined,
                     chatSentiment: undefined,
@@ -308,6 +434,10 @@ export function useLaylaCompanions() {
                       ...companion,
                       chatSentiment,
                       chatSentimentPromise,
+                      mainMood:
+                        chatSentiment.scoredTexts.length > 0
+                          ? mainMoodFromSentiment(chatSentiment.scoredTexts[0].sentimentValue)
+                          : "no chat yet",
                       isChatSentimentLoading: false,
                       chatSentimentError: undefined,
                       bond,
@@ -328,6 +458,7 @@ export function useLaylaCompanions() {
                       chatSentiment: undefined,
                       chatSentimentPromise,
                       isChatSentimentLoading: false,
+                      mainMood: "mood unavailable",
                       chatSentimentError: messageFromError(chatSentimentError),
                       isBondLoading: false,
                       bondError: messageFromError(chatSentimentError),
@@ -345,7 +476,10 @@ export function useLaylaCompanions() {
               companion.id === character.id
                 ? {
                     ...companion,
+                    daysKnown: 0,
+                    lastChat: "unavailable",
                     isChatHistoryLoaded: true,
+                    mainMood: "mood unavailable",
                     chatHistoryError: messageFromError(historyError),
                     isChatSentimentLoading: false,
                     chatSentimentError: messageFromError(historyError),

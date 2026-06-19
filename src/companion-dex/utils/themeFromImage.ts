@@ -121,6 +121,8 @@ export async function extractThemeFromUrl(url: string) {
       crossOrigin: "anonymous",
     });
 
+    console.log("Extracted colors from image:", colors);
+
     return colorToTheme(colors);
   } catch (error: unknown) {
     console.error("Error extracting theme from URL:", error);
