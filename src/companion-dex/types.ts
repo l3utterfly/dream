@@ -42,6 +42,8 @@ export interface Character {
     fact: string;
     fresh?: boolean;
   }[];
+  isMemoriesLoading: boolean;
+  memoriesError?: string;
   threads: string[];
   moments: {
     quote: string;

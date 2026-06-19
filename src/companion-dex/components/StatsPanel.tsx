@@ -15,6 +15,7 @@ interface StatsPanelProps {
 export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
   const [mounted, setMounted] = useState(false);
   const [vitalTaps, setVitalTaps] = useState({
+    characterId: character.id,
     energy: 0,
     fed: 0,
     social: 0,
@@ -25,14 +26,14 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     return () => cancelAnimationFrame(id);
   }, []);
 
-  useEffect(() => {
-    setVitalTaps({ energy: 0, fed: 0, social: 0 });
-  }, [character.id]);
-
+  const activeVitalTaps = vitalTaps.characterId === character.id ? vitalTaps : { characterId: character.id, energy: 0, fed: 0, social: 0 };
   const v = (n: number) => (mounted ? n : 0);
-  const vitalValue = (key: keyof Character["vitals"]) => v(character.vitals[key] + vitalTaps[key]);
+  const vitalValue = (key: keyof Character["vitals"]) => v(character.vitals[key] + activeVitalTaps[key]);
   const tapVital = (key: keyof Character["vitals"]) => {
-    setVitalTaps((current) => ({ ...current, [key]: current[key] + 1 }));
+    setVitalTaps((current) => {
+      const nextTaps = current.characterId === character.id ? current : { characterId: character.id, energy: 0, fed: 0, social: 0 };
+      return { ...nextTaps, [key]: nextTaps[key] + 1 };
+    });
   };
   const balanceLeft = 50 + character.stats.balance / 2;
   const trend = character.bond?.trend;
@@ -121,24 +122,25 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       </Block>
 
       <Block icon={<Brain size={15} />} title="Holds in mind about you">
-        <div key={`rem-${character.id}`} className="cd-fade" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {character.remembers.map((memory, i) => (
-            <span
-              key={i}
-              style={{
-                fontSize: 13,
-                padding: "6px 13px",
-                borderRadius: 99,
-                background: memory.fresh ? "var(--primary)" : "var(--chip)",
-                color: memory.fresh ? "#13130f" : "var(--ink-1)",
-                fontWeight: memory.fresh ? 700 : 500,
-              }}
-            >
-              {memory.fresh && "✦ "}
-              {memory.fact}
-            </span>
-          ))}
-        </div>
+        {character.isMemoriesLoading ? (
+          <SectionSpinner label="Gathering memories" />
+        ) : character.memoriesError ? (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            Memories unavailable: {character.memoriesError}
+          </p>
+        ) : character.remembers.length > 0 ? (
+          <div key={`rem-${character.id}`} className="cd-memory-scroller cd-fade" aria-label={`Top memories ${character.name} holds about you`}>
+            {character.remembers.map((memory, i) => (
+              <figure key={i} className={memory.fresh ? "cd-memory-card cd-memory-card-primary" : "cd-memory-card"}>
+                <blockquote>{memory.fact}</blockquote>
+              </figure>
+            ))}
+          </div>
+        ) : (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            No memories yet.
+          </p>
+        )}
       </Block>
 
       <Block icon={<ListChecks size={15} />} title="Open threads">

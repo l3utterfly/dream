@@ -5,6 +5,7 @@ import LaylaSDK, {
   LaylaError,
   type LaylaChatHistoryEntry,
   type LaylaCharacter,
+  type LaylaMemory,
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
 import { computeBond, type ScoredSentence } from "../libs/computeBond";
@@ -12,6 +13,7 @@ import type { Character } from "../types";
 
 const PAGE_SIZE = 1;
 const CHAT_HISTORY_LIMIT = 50;
+const TOP_MEMORY_LIMIT = 3;
 const layla = new LaylaSDK();
 
 function imageFromCharacterCard(character: LaylaCharacter) {
@@ -40,6 +42,11 @@ function cleanSentence(value: string | undefined, fallback: string) {
 
 function shortText(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1).trim()}...` : value;
+}
+
+function cleanMemoryText(memory: LaylaMemory) {
+  const text = (memory.summary ?? memory.rawText).trim().replace(/\s+/g, " ");
+  return text;
 }
 
 function splitSentences(value: string | null) {
@@ -129,6 +136,7 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     chatHistory: [],
     isChatHistoryLoaded: false,
     isBondLoading: true,
+    isMemoriesLoading: true,
     remembers: [
       { fact: shortText(description, 36), fresh: true },
       { fact: shortText(personality, 36) },
@@ -183,6 +191,7 @@ export function useLaylaCompanions() {
   const abortRef = useRef<AbortController | null>(null);
   const imageAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const chatHistoryAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const memoriesAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const isLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const offsetRef = useRef(0);
@@ -288,6 +297,60 @@ export function useLaylaCompanions() {
     });
   }, []);
 
+  const hydrateTopMemories = useCallback((characters: LaylaCharacter[]) => {
+    characters.forEach((character) => {
+      const controller = new AbortController();
+      memoriesAbortControllersRef.current.add(controller);
+
+      void layla.memories
+        .getTopMemories(character.id, TOP_MEMORY_LIMIT, {
+          signal: controller.signal,
+        })
+        .then((memories) => {
+          const remembers = memories
+            .map(cleanMemoryText)
+            .filter(Boolean)
+            .slice(0, TOP_MEMORY_LIMIT)
+            .map((fact, index) => ({
+              fact,
+              fresh: index === 0,
+            }));
+
+          setCompanions((current) =>
+            current.map((companion) =>
+              companion.id === character.id
+                ? {
+                    ...companion,
+                    remembers,
+                    isMemoriesLoading: false,
+                    memoriesError: undefined,
+                  }
+                : companion,
+            ),
+          );
+        })
+        .catch((memoriesError) => {
+          if (memoriesError instanceof LaylaAbortError) return;
+
+          setCompanions((current) =>
+            current.map((companion) =>
+              companion.id === character.id
+                ? {
+                    ...companion,
+                    remembers: [],
+                    isMemoriesLoading: false,
+                    memoriesError: messageFromError(memoriesError),
+                  }
+                : companion,
+            ),
+          );
+        })
+        .finally(() => {
+          memoriesAbortControllersRef.current.delete(controller);
+        });
+    });
+  }, []);
+
   const loadMore = useCallback(async () => {
     if (isLoadingRef.current) {
       if (!abortRef.current?.signal.aborted) return 0;
@@ -319,6 +382,7 @@ export function useLaylaCompanions() {
       setHasMore(hasMoreRef.current);
       hydrateImages(laylaCharacters);
       hydrateChatHistories(laylaCharacters);
+      hydrateTopMemories(laylaCharacters);
 
       return nextCompanions.length;
     } catch (loadError) {
@@ -334,12 +398,13 @@ export function useLaylaCompanions() {
         setIsLoading(false);
       }
     }
-  }, [hydrateChatHistories, hydrateImages]);
+  }, [hydrateChatHistories, hydrateImages, hydrateTopMemories]);
 
   useEffect(() => {
     void loadMore();
     const imageAbortControllers = imageAbortControllersRef.current;
     const chatHistoryAbortControllers = chatHistoryAbortControllersRef.current;
+    const memoriesAbortControllers = memoriesAbortControllersRef.current;
 
     return () => {
       abortRef.current?.abort();
@@ -347,6 +412,8 @@ export function useLaylaCompanions() {
       imageAbortControllers.clear();
       chatHistoryAbortControllers.forEach((controller) => controller.abort());
       chatHistoryAbortControllers.clear();
+      memoriesAbortControllers.forEach((controller) => controller.abort());
+      memoriesAbortControllers.clear();
     };
   }, [loadMore]);
 

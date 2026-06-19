@@ -1,4 +1,4 @@
-import { makeMockCharacter, type LaylaCharacter, type TavernCardV2 } from "@layla-network/sdk";
+import { makeMockCharacter, type LaylaCharacter, type LaylaMemory, type TavernCardV2 } from "@layla-network/sdk";
 
 type MockCharacterSeed = {
   id: string;
@@ -108,3 +108,34 @@ function makeCharacter(seed: MockCharacterSeed): LaylaCharacter {
 }
 
 export const MOCK_LAYLA_CHARACTERS = seeds.map(makeCharacter);
+
+export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex) => {
+  const timestamp = Date.now() - seedIndex * 60 * 60 * 1000;
+
+  return [
+    {
+      id: seedIndex * 3 + 1,
+      character_id: seed.id,
+      rawText: `${seed.name} remembers that you tend to notice the emotional weather in a room before you talk about practical plans.`,
+      timestamp,
+      summary: "You tend to notice the emotional weather in a room before moving into practical plans.",
+      knowledgeGraphJSON: null,
+    },
+    {
+      id: seedIndex * 3 + 2,
+      character_id: seed.id,
+      rawText: `${seed.name} keeps in mind that you like replies that feel specific, grounded, and a little warm without becoming overly polished.`,
+      timestamp: timestamp - 20 * 60 * 1000,
+      summary: "You like replies that feel specific, grounded, and warm without becoming overly polished.",
+      knowledgeGraphJSON: null,
+    },
+    {
+      id: seedIndex * 3 + 3,
+      character_id: seed.id,
+      rawText: `${seed.name} remembers that when you are tired, you prefer someone to stay steady with you instead of trying to rush you into a better mood.`,
+      timestamp: timestamp - 40 * 60 * 1000,
+      summary: "When you are tired, you prefer steadiness over being rushed into a better mood.",
+      knowledgeGraphJSON: null,
+    },
+  ];
+});

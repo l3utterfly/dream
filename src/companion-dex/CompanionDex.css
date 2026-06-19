@@ -90,6 +90,7 @@
   padding-top: 60px;
   min-height: 70vh;
   box-shadow: 0 -20px 50px -20px rgba(0, 0, 0, 0.6);
+  touch-action: pan-y;
 }
 
 .cd-avatar {
@@ -147,6 +148,49 @@
   border: 3px solid var(--track);
   border-top-color: var(--primary);
   animation: cdSpin 0.8s linear infinite;
+}
+
+.cd-memory-scroller {
+  display: flex;
+  gap: 12px;
+  margin: 0 -24px;
+  padding: 2px 24px 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+
+.cd-memory-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.cd-memory-card {
+  flex: 0 0 min(82%, 320px);
+  min-height: 132px;
+  margin: 0;
+  padding: 18px 18px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--chip);
+  color: var(--ink-1);
+  scroll-snap-align: start;
+  box-shadow: 0 16px 34px -26px rgba(0, 0, 0, 0.7);
+}
+
+.cd-memory-card-primary {
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 20%, transparent), transparent 58%),
+    var(--chip);
+}
+
+.cd-memory-card blockquote {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--text);
 }
 
 .cd-vital-button {

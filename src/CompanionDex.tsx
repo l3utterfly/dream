@@ -109,6 +109,11 @@ export default function CompanionDex() {
   }, [activeIndex, go]);
 
   const onTouchStart = (event: TouchEvent) => {
+    if ((event.target as Element).closest(".cd-panel")) {
+      touch.current = null;
+      return;
+    }
+
     touch.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
   };
 
