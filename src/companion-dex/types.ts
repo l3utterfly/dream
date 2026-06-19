@@ -14,6 +14,10 @@ export interface ChatSentimentData {
   scoredSentences: ScoredSentence[];
 }
 
+export interface MemorySentimentData {
+  scoredSentences: ScoredSentence[];
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -53,6 +57,10 @@ export interface Character {
   recentMemories: LaylaMemory[];
   isMemoriesLoading: boolean;
   memoriesError?: string;
+  memorySentiment?: MemorySentimentData;
+  memorySentimentPromise?: Promise<MemorySentimentData>;
+  isMemorySentimentLoading: boolean;
+  memorySentimentError?: string;
   threads: string[];
   moments: {
     quote: string;
@@ -81,4 +89,11 @@ export function waitForCharacterChatSentiment(character: Character): Promise<Cha
   if (character.chatSentimentPromise) return character.chatSentimentPromise;
 
   return Promise.reject(new Error("Chat sentiment data is not available."));
+}
+
+export function waitForCharacterMemorySentiment(character: Character): Promise<MemorySentimentData> {
+  if (character.memorySentiment) return Promise.resolve(character.memorySentiment);
+  if (character.memorySentimentPromise) return character.memorySentimentPromise;
+
+  return Promise.reject(new Error("Memory sentiment data is not available."));
 }

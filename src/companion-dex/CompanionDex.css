@@ -193,6 +193,50 @@
   color: var(--text);
 }
 
+.cd-moment-card {
+  margin: 18px 0 0;
+  padding: 16px 16px 17px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--chip);
+  color: var(--ink-1);
+  box-shadow: 0 16px 34px -26px rgba(0, 0, 0, 0.7);
+}
+
+.cd-moment-card:first-child {
+  margin-top: 0;
+}
+
+.cd-moment-card-primary {
+  border-color: color-mix(in srgb, var(--primary) 48%, transparent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 18%, transparent), transparent 60%),
+    var(--chip);
+}
+
+.cd-moment-card blockquote {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1.42;
+  color: var(--text);
+}
+
+.cd-moment-card figcaption {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.cd-moment-card time {
+  font-family: var(--mono);
+  color: var(--deep);
+  transition: color .5s;
+}
+
 .cd-vital-button {
   flex: 1;
   min-width: 0;

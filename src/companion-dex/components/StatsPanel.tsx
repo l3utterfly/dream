@@ -1,10 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Brain, Clock, Coffee, Cookie, Hand, Heart, Laugh, ListChecks, MessageCircle, Quote, Scale, Smile, Sparkles, TrendingDown, TrendingUp, Zap } from "lucide-react";
 import { MOOD_LABEL } from "../data";
-import type { Character, Theme } from "../types";
+import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
+import type { Character, MemorySentimentData, Theme } from "../types";
 import { Avatar } from "./Avatar";
 import { Bar, Block, Heatmap, SectionSpinner, Vital } from "./MetricSections";
 import { CountNum } from "./CountNum";
+
+const EMPTY_MEMORY_SENTIMENT: MemorySentimentData = { scoredSentences: [] };
+
+function formatMomentDate(timestamp: number) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "sometime";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const momentDay = new Date(date);
+  momentDay.setHours(0, 0, 0, 0);
+  const daysAgo = Math.round((today.getTime() - momentDay.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (daysAgo === 0) return "today";
+  if (daysAgo === 1) return "yesterday";
+  if (daysAgo > 1 && daysAgo < 7) return `${daysAgo} days ago`;
+
+  const options: Intl.DateTimeFormatOptions =
+    date.getFullYear() === new Date().getFullYear()
+      ? { month: "short", day: "numeric" }
+      : { month: "short", day: "numeric", year: "numeric" };
+
+  return new Intl.DateTimeFormat(undefined, options).format(date);
+}
 
 interface StatsPanelProps {
   character: Character;
@@ -45,6 +70,17 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
         : "today"
     : "today";
   const trendDifference = trend?.difference ?? 0;
+  const momentsWorthKeeping = useMemo(() => {
+    if (!character.chatSentiment) return [];
+
+    return selectMomentsWorthKeeping(
+      character.chatSentiment,
+      character.memorySentiment ?? EMPTY_MEMORY_SENTIMENT,
+    );
+  }, [character.chatSentiment, character.memorySentiment]);
+  const momentsLoading =
+    character.isChatSentimentLoading ||
+    (character.isMemorySentimentLoading && !character.memorySentiment && !character.memorySentimentError);
   const statItems = [
     { node: <CountNum value={character.stats.streak} />, small: "day streak", icon: <Coffee size={15} /> },
     { node: <CountNum value={character.stats.messages} format={(n) => n.toLocaleString()} />, small: "messages", icon: <MessageCircle size={15} /> },
@@ -155,16 +191,29 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       </Block>
 
       <Block icon={<Quote size={15} />} title="Moments worth keeping">
-        <div key={`mom-${character.id}`} className="cd-fade">
-          {character.moments.map((moment, i) => (
-            <figure key={i} style={{ margin: i ? "20px 0 0" : 0, paddingLeft: 16, borderLeft: "2px solid var(--primary)" }}>
-              <blockquote style={{ margin: 0, fontFamily: "var(--display)", fontSize: 19, color: "var(--text)", lineHeight: 1.4 }}>“{moment.quote}”</blockquote>
-              <figcaption style={{ marginTop: 7, fontSize: 12.5, color: "var(--ink-2)" }}>
-                {moment.context} · <span style={{ fontFamily: "var(--mono)" }}>{moment.when}</span>
-              </figcaption>
-            </figure>
-          ))}
-        </div>
+        {momentsLoading ? (
+          <SectionSpinner label="Finding keepable moments" />
+        ) : character.chatSentimentError ? (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            Moments unavailable: {character.chatSentimentError}
+          </p>
+        ) : momentsWorthKeeping.length > 0 ? (
+          <div key={`mom-${character.id}`} className="cd-fade">
+            {momentsWorthKeeping.map((moment, i) => (
+              <figure key={`${moment.timestamp}-${i}`} className={i === 0 ? "cd-moment-card cd-moment-card-primary" : "cd-moment-card"}>
+                <blockquote>&ldquo;{moment.quote}&rdquo;</blockquote>
+                <figcaption>
+                  {moment.summary ? <span>{moment.summary}</span> : null}
+                  <time dateTime={new Date(moment.timestamp).toISOString()}>{formatMomentDate(moment.timestamp)}</time>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : (
+          <p className="cd-fade" style={{ margin: 0, fontSize: 13.5, color: "var(--ink-2)", lineHeight: 1.45 }}>
+            No keepable moments yet.
+          </p>
+        )}
       </Block>
 
       <Block icon={<Clock size={15} />} title="When you two talk">

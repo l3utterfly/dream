@@ -9,7 +9,7 @@ import LaylaSDK, {
 } from "@layla-network/sdk";
 import { DISPLAY_PROFILES } from "../data";
 import { computeBond, type ScoredSentence } from "../libs/computeBond";
-import type { Character, ChatSentimentData } from "../types";
+import type { Character, ChatSentimentData, MemorySentimentData } from "../types";
 
 const PAGE_SIZE = 1;
 const CHAT_HISTORY_LIMIT = 50;
@@ -143,6 +143,31 @@ async function computeChatSentimentFromChatHistory(
   return { scoredSentences };
 }
 
+async function computeMemorySentimentFromMemories(
+  memories: LaylaMemory[],
+  signal: AbortSignal,
+): Promise<MemorySentimentData> {
+  const scoredSentences: ScoredSentence[] = [];
+
+  for (const memory of memories) {
+    const sentences = splitSentences(cleanMemoryText(memory));
+
+    for (const sentence of sentences) {
+      const sentimentValue = await layla.classifier.getSentiment(sentence, {
+        signal,
+      });
+
+      scoredSentences.push({
+        sentence,
+        timestamp: memory.timestamp,
+        sentimentValue,
+      });
+    }
+  }
+
+  return { scoredSentences };
+}
+
 function toCompanion(character: LaylaCharacter, index: number, image: string | null): Character {
   const profile = DISPLAY_PROFILES[index % DISPLAY_PROFILES.length];
   const data = character.data.data;
@@ -170,6 +195,7 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
     isChatSentimentLoading: true,
     isBondLoading: true,
     isMemoriesLoading: true,
+    isMemorySentimentLoading: true,
     remembers: [
       { fact: shortText(description, 36), fresh: true },
       { fact: shortText(personality, 36) },
@@ -370,7 +396,7 @@ export function useLaylaCompanions() {
           signal: controller.signal,
         }),
       ])
-        .then(([topMemories, recentMemories]) => {
+        .then(async ([topMemories, recentMemories]) => {
           const remembers = topMemories
             .map(cleanMemoryText)
             .filter(Boolean)
@@ -380,6 +406,10 @@ export function useLaylaCompanions() {
               fresh: index === 0,
             }));
           const threads = openThreadsFromMemories(recentMemories);
+          const memorySentimentPromise = computeMemorySentimentFromMemories(
+            recentMemories,
+            controller.signal,
+          );
 
           setCompanions((current) =>
             current.map((companion) =>
@@ -391,10 +421,48 @@ export function useLaylaCompanions() {
                     threads,
                     isMemoriesLoading: false,
                     memoriesError: undefined,
+                    memorySentiment: undefined,
+                    memorySentimentPromise,
+                    isMemorySentimentLoading: true,
+                    memorySentimentError: undefined,
                   }
                 : companion,
             ),
           );
+
+          try {
+            const memorySentiment = await memorySentimentPromise;
+
+            setCompanions((current) =>
+              current.map((companion) =>
+                companion.id === character.id
+                  ? {
+                      ...companion,
+                      memorySentiment,
+                      memorySentimentPromise,
+                      isMemorySentimentLoading: false,
+                      memorySentimentError: undefined,
+                    }
+                  : companion,
+              ),
+            );
+          } catch (memorySentimentError) {
+            if (memorySentimentError instanceof LaylaAbortError) return;
+
+            setCompanions((current) =>
+              current.map((companion) =>
+                companion.id === character.id
+                  ? {
+                      ...companion,
+                      memorySentiment: undefined,
+                      memorySentimentPromise,
+                      isMemorySentimentLoading: false,
+                      memorySentimentError: messageFromError(memorySentimentError),
+                    }
+                  : companion,
+              ),
+            );
+          }
         })
         .catch((memoriesError) => {
           if (memoriesError instanceof LaylaAbortError) return;
@@ -409,6 +477,8 @@ export function useLaylaCompanions() {
                     threads: [],
                     isMemoriesLoading: false,
                     memoriesError: messageFromError(memoriesError),
+                    isMemorySentimentLoading: false,
+                    memorySentimentError: messageFromError(memoriesError),
                   }
                 : companion,
             ),
