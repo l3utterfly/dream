@@ -17,6 +17,7 @@ import {
 import type { Character, Theme } from "../types";
 import { layla } from "./stats-panel/laylaClient";
 import {
+  characterVitals,
   characterVitalValue,
   ensureCharacterVitalSettings,
   loadPanelSettings,
@@ -143,18 +144,43 @@ export function StatsPanel({
   }, [character.id]);
 
   const value = (n: number) => (mounted ? n : 0);
-  const vitalValue = (key: keyof Character["vitals"]) =>
-    value(characterVitalValue(settingsState.settings, character.id, key, now));
-  const energyValue = vitalValue("energy");
-  const fedValue = vitalValue("fed");
-  const socialValue = vitalValue("social");
+
+  const activeVitals = useMemo<Character["vitals"]>(
+    () =>
+      settingsState.status === "ready"
+        ? characterVitals(settingsState.settings, character.id, now)
+        : character.vitals,
+    [
+      character.id,
+      character.vitals,
+      now,
+      settingsState.settings,
+      settingsState.status,
+    ],
+  );
+  const activeCharacter = useMemo<Character>(
+    () => ({
+      ...character,
+      vitals: activeVitals,
+    }),
+    [activeVitals, character],
+  );
+
+  const energyValue = value(activeVitals.energy);
+  const fedValue = value(activeVitals.fed);
+  const socialValue = value(activeVitals.social);
 
   const tapVital = (key: keyof Character["vitals"]) => {
     const tappedAt = Date.now();
-    const nextValue =
-      characterVitalValue(settingsRef.current, character.id, key, tappedAt) + 1;
-    const nextSettings = withCharacterVitalSettings(
+    const currentSettings = ensureCharacterVitalSettings(
       settingsRef.current,
+      character.id,
+      tappedAt,
+    );
+    const nextValue =
+      characterVitalValue(currentSettings, character.id, key, tappedAt) + 1;
+    const nextSettings = withCharacterVitalSettings(
+      currentSettings,
       character.id,
       key,
       {
@@ -173,8 +199,8 @@ export function StatsPanel({
   };
 
   const reflectionPromptValues = useMemo(
-    () => buildReflectionPromptValues(character),
-    [character],
+    () => buildReflectionPromptValues(activeCharacter),
+    [activeCharacter],
   );
 
   const handleReflect = useCallback(async () => {
@@ -190,7 +216,7 @@ export function StatsPanel({
     let stream: ChatCompletionStream | null = null;
 
     try {
-      const result = await runReflection(character, {
+      const result = await runReflection(activeCharacter, {
         layla,
         settings: settingsRef.current,
         promptValues,
@@ -247,7 +273,7 @@ export function StatsPanel({
         reflectionStreamRef.current = null;
       }
     }
-  }, [character, onUpdateLaylaCharacter, reflectionPromptValues]);
+  }, [activeCharacter, character.id, onUpdateLaylaCharacter, reflectionPromptValues]);
 
   const activeReflection =
     reflection.characterId === character.id ? reflection : null;
@@ -255,7 +281,7 @@ export function StatsPanel({
   const reflectedText = activeReflection?.text.trim() ? activeReflection.text : "";
   const reflectionError =
     activeReflection?.status === "error" ? activeReflection.error : undefined;
-  const reflectionPromptReady = isReflectionPromptReady(character);
+  const reflectionPromptReady = isReflectionPromptReady(activeCharacter);
   const reflectionGuard = useMemo(
     () =>
       reflectionGuardState(
@@ -276,7 +302,7 @@ export function StatsPanel({
   const canReflect =
     settingsState.status === "ready" &&
     canRunReflection({
-      character,
+      character: activeCharacter,
       settings: settingsState.settings,
       promptValues: reflectionPromptValues,
       now,
@@ -291,7 +317,7 @@ export function StatsPanel({
       !reflectionGuard.cooldownElapsed);
   const reflectTitle = getReflectTitle({
     canReflect,
-    character,
+    character: activeCharacter,
     isReflecting,
     reflectionGuard,
     settingsState,
@@ -311,32 +337,32 @@ export function StatsPanel({
   return (
     <div style={{ padding: "0 24px 8px" }}>
       <StatsPanelHeader
-        character={character}
+        character={activeCharacter}
         theme={theme}
         imageFailed={imageFailed}
       />
       <DreamSection
-        character={character}
+        character={activeCharacter}
         canReflectBeforeDream={canReflect && !isReflecting}
         reflectionPromptValues={reflectionPromptValues}
         settingsState={settingsState}
         onSettingsChange={updateReflectionSettings}
         onUpdateLaylaCharacter={onUpdateLaylaCharacter}
       />
-      <BondSection character={character} value={value} />
+      <BondSection character={activeCharacter} value={value} />
       <WellbeingSection
-        character={character}
+        character={activeCharacter}
         energyValue={energyValue}
         fedValue={fedValue}
         socialValue={socialValue}
         onTapVital={tapVital}
       />
-      <MemoriesSection character={character} />
-      <ThreadsSection character={character} />
-      <MomentsSection character={character} />
-      <TalkRhythmSection character={character} />
+      <MemoriesSection character={activeCharacter} />
+      <ThreadsSection character={activeCharacter} />
+      <MomentsSection character={activeCharacter} />
+      <TalkRhythmSection character={activeCharacter} />
       <ImpressionSection
-        character={character}
+        character={activeCharacter}
         isReflecting={isReflecting}
         reflectDisabled={reflectDisabled}
         reflectTitle={reflectTitle}
@@ -345,8 +371,8 @@ export function StatsPanel({
         reflectionError={reflectionError}
         onReflect={handleReflect}
       />
-      <NumbersSection character={character} />
-      <PrivateLanguageSection character={character} />
+      <NumbersSection character={activeCharacter} />
+      <PrivateLanguageSection character={activeCharacter} />
       <div style={{ height: 44 }} />
     </div>
   );

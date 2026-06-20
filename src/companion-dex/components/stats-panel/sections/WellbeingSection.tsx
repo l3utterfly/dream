@@ -59,10 +59,10 @@ export function WellbeingSection({
         <Vital
           icon={<Hand size={18} />}
           label={vitalActionLabel(socialValue, "Wave", {
-            low: "Neglectd",
+            low: "Neglected",
             veryLow: "Lonely",
           })}
-          ariaLabel={socialValue < 30 ? "Lonely - Wave" : socialValue < 70 ? "Neglectd - Wave" : "Wave"}
+          ariaLabel={socialValue < 30 ? "Lonely - Wave" : socialValue < 70 ? "Neglected - Wave" : "Wave"}
           value={socialValue}
           onTap={() => onTapVital("social")}
         />

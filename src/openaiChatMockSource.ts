@@ -144,6 +144,8 @@ export function createOpenAIChatMockSource({
       }),
     });
 
+    console.log("mock OpenAI chat messages sent:", messages.map(toOpenAIMessage));
+
     if (!response.ok) {
       const body = await readErrorBody(response);
       throw new Error(

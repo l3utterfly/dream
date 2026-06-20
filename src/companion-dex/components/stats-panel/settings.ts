@@ -195,6 +195,18 @@ export function characterVitalValue(
   return Math.max(0, decayVital(vital.value, vital.lastTapped, now));
 }
 
+export function characterVitals(
+  settings: CompanionDexSettings,
+  characterId: string,
+  now: number,
+): Character["vitals"] {
+  return {
+    energy: characterVitalValue(settings, characterId, "energy", now),
+    fed: characterVitalValue(settings, characterId, "fed", now),
+    social: characterVitalValue(settings, characterId, "social", now),
+  };
+}
+
 export function withCharacterVitalSettings(
   settings: CompanionDexSettings,
   characterId: string,

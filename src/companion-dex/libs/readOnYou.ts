@@ -105,20 +105,20 @@ export function getTimeTogether(character: Character) {
 }
 
 export function getWarmthAndDepth(character: Character) {
-    const warmth = character.warmth;
-    const depth = character.depth;
+  const warmth = character.warmth;
+  const depth = character.depth;
 
-    if (warmth > 70 && depth > 70) {
-        return "You've shared plenty of close, meaningful moments together";
-    } else if (warmth > 70 && depth < 30) {
-        return "Lots of friendly chats, though they've stayed pretty light";
-    } else if (warmth < 30 && depth > 70) {
-        return "Your conversations run deep, even if they're few and far between";
-    } else if (warmth < 30 && depth < 30) {
-        return "You've only crossed paths briefly, and kept things surface-level";
-    } else {
-        return "You've had a nice mix of warm and thoughtful exchanges";
-    }
+  if (warmth > 70 && depth > 70) {
+    return "You've shared plenty of close, meaningful moments together";
+  } else if (warmth > 70 && depth < 30) {
+    return "Lots of friendly chats, though they've stayed pretty light";
+  } else if (warmth < 30 && depth > 70) {
+    return "Your conversations run deep, even if they're few and far between";
+  } else if (warmth < 30 && depth < 30) {
+    return "You've only crossed paths briefly, and kept things surface-level";
+  } else {
+    return "You've had a nice mix of warm and thoughtful exchanges";
+  }
 }
 
 export function getPreviousImpression(character: Character) {
@@ -146,19 +146,19 @@ export function getMemories(character: Character) {
 }
 
 export function getEmotions(character: Character) {
-    let e = 'Bored';
-    if (character.vitals.energy < 30) e = 'Sleepy';
-    else if (character.vitals.energy > 70) e = 'Energetic';
+  let e = "Bored";
+  if (character.vitals.energy < 30) e = "Sleepy";
+  else if (character.vitals.energy > 70) e = "Energetic";
 
-    let f = 'Peckish';
-    if (character.vitals.fed < 30) f = 'Hungry';
-    else if (character.vitals.fed > 70) f = 'Fed';
+  let f = "Peckish";
+  if (character.vitals.fed < 30) f = "Hungry";
+  else if (character.vitals.fed > 70) f = "Fed";
 
-    let s = 'Content';
-    if (character.vitals.social < 30) s = 'Lonely';
-    else if (character.vitals.social > 70) s = 'Warm';
+  let s = "Content";
+  if (character.vitals.social < 30) s = "Lonely";
+  else if (character.vitals.social > 70) s = "Warm";
 
-    return `${e}, ${f}, ${s}`;
+  return `${e}, ${f}, ${s}`;
 }
 
 export function getRecentMemory(character: Character) {
