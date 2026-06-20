@@ -30,6 +30,7 @@ import {
   type ReflectionState,
 } from "./stats-panel/reflection";
 import { BondSection } from "./stats-panel/sections/BondSection";
+import { DreamSection } from "./stats-panel/sections/DreamSection";
 import { ImpressionSection } from "./stats-panel/sections/ImpressionSection";
 import { MemoriesSection } from "./stats-panel/sections/MemoriesSection";
 import { MomentsSection } from "./stats-panel/sections/MomentsSection";
@@ -324,6 +325,7 @@ export function StatsPanel({
         theme={theme}
         imageFailed={imageFailed}
       />
+      <DreamSection character={character} />
       <BondSection character={character} value={value} />
       <WellbeingSection
         character={character}
