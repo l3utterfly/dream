@@ -5,9 +5,15 @@ import {
   type LaylaCharacter,
 } from "@layla-network/sdk";
 import {
-  buildReadOnYouMessages,
-  buildReadOnYouPromptValues,
-} from "../libs/readOnYou";
+  buildReflectionPromptValues,
+  canRunReflection,
+  getReflectTitle,
+  isReflectionPromptReady,
+  reflectionErrorMessage,
+  reflectionGuardState,
+  runReflection,
+  type ReflectionState,
+} from "../libs/reflect";
 import type { Character, Theme } from "../types";
 import { layla } from "./stats-panel/laylaClient";
 import {
@@ -17,18 +23,10 @@ import {
   queueSaveSettings,
   saveSettingsInBackground,
   settingsErrorMessage,
-  withCharacterReflectionSettings,
   withCharacterVitalSettings,
   type CompanionDexSettings,
   type SettingsState,
 } from "./stats-panel/settings";
-import {
-  getReflectTitle,
-  reflectionErrorMessage,
-  reflectionGuardState,
-  withImpression,
-  type ReflectionState,
-} from "./stats-panel/reflection";
 import { BondSection } from "./stats-panel/sections/BondSection";
 import { DreamSection } from "./stats-panel/sections/DreamSection";
 import { ImpressionSection } from "./stats-panel/sections/ImpressionSection";
@@ -175,7 +173,7 @@ export function StatsPanel({
   };
 
   const reflectionPromptValues = useMemo(
-    () => buildReadOnYouPromptValues(character),
+    () => buildReflectionPromptValues(character),
     [character],
   );
 
@@ -192,56 +190,45 @@ export function StatsPanel({
     let stream: ChatCompletionStream | null = null;
 
     try {
-      stream = layla.chat.completions.stream({
-        messages: buildReadOnYouMessages(character, promptValues),
+      const result = await runReflection(character, {
+        layla,
+        settings: settingsRef.current,
+        promptValues,
+        onUpdateLaylaCharacter,
+        saveSettings: queueSaveSettings,
+        onStream: (activeStream) => {
+          stream = activeStream;
+          reflectionStreamRef.current = activeStream;
+        },
+        onContent: (snapshot) => {
+          setReflection((current) =>
+            current.characterId === character.id
+              ? {
+                  ...current,
+                  status: "loading",
+                  text: snapshot,
+                  error: undefined,
+                }
+              : current,
+          );
+        },
       });
-      reflectionStreamRef.current = stream;
 
-      stream.on("content", (_delta, snapshot) => {
-        setReflection((current) =>
-          current.characterId === character.id
-            ? {
-                ...current,
-                status: "loading",
-                text: snapshot,
-                error: undefined,
-              }
-            : current,
-        );
-      });
-
-      const finalText = await stream.finalContent();
-      const finalImpression = finalText.trim();
       setReflection((current) =>
         current.characterId === character.id
           ? {
               ...current,
               status: "done",
-              text: finalText,
+              text: result.text,
               error: undefined,
             }
           : current,
       );
 
-      await onUpdateLaylaCharacter(character.id, (laylaCharacter) =>
-        withImpression(laylaCharacter, finalImpression),
-      );
-
-      const nextSettings = withCharacterReflectionSettings(
-        settingsRef.current,
-        character.id,
-        {
-          lastReflectedAt: Date.now(),
-          memories: promptValues.memories,
-          recentMemory: promptValues.recent_memory,
-        },
-      );
-
-      await queueSaveSettings(nextSettings);
-      settingsRef.current = nextSettings;
+      settingsRef.current = result.nextSettings;
       setSettingsState({
         status: "ready",
-        settings: nextSettings,
+        settings: result.nextSettings,
       });
     } catch (error) {
       if (error instanceof LaylaAbortError) return;
@@ -268,18 +255,7 @@ export function StatsPanel({
   const reflectedText = activeReflection?.text.trim() ? activeReflection.text : "";
   const reflectionError =
     activeReflection?.status === "error" ? activeReflection.error : undefined;
-  const reflectionPromptReady =
-    character.isChatHistoryLoaded &&
-    !character.chatHistoryError &&
-    !character.isChatSentimentLoading &&
-    !character.chatSentimentError &&
-    !!character.chatSentiment &&
-    !character.isMemoriesLoading &&
-    !character.memoriesError &&
-    !character.isPersonaLoading &&
-    !character.isMemorySentimentLoading &&
-    !character.memorySentimentError &&
-    character.recentMemories.length > 0;
+  const reflectionPromptReady = isReflectionPromptReady(character);
   const reflectionGuard = useMemo(
     () =>
       reflectionGuardState(
@@ -298,11 +274,13 @@ export function StatsPanel({
     ],
   );
   const canReflect =
-    reflectionPromptReady &&
     settingsState.status === "ready" &&
-    reflectionGuard.memoriesChanged &&
-    reflectionGuard.recentMemoryChanged &&
-    reflectionGuard.cooldownElapsed;
+    canRunReflection({
+      character,
+      settings: settingsState.settings,
+      promptValues: reflectionPromptValues,
+      now,
+    });
   const reflectDisabled = isReflecting || !canReflect;
   const showReflectGuardStatus =
     !isReflecting &&
@@ -319,6 +297,17 @@ export function StatsPanel({
     settingsState,
   });
 
+  const updateReflectionSettings = useCallback(
+    (nextSettings: CompanionDexSettings) => {
+      settingsRef.current = nextSettings;
+      setSettingsState({
+        status: "ready",
+        settings: nextSettings,
+      });
+    },
+    [],
+  );
+
   return (
     <div style={{ padding: "0 24px 8px" }}>
       <StatsPanelHeader
@@ -326,7 +315,14 @@ export function StatsPanel({
         theme={theme}
         imageFailed={imageFailed}
       />
-      <DreamSection character={character} />
+      <DreamSection
+        character={character}
+        canReflectBeforeDream={canReflect && !isReflecting}
+        reflectionPromptValues={reflectionPromptValues}
+        settingsState={settingsState}
+        onSettingsChange={updateReflectionSettings}
+        onUpdateLaylaCharacter={onUpdateLaylaCharacter}
+      />
       <BondSection character={character} value={value} />
       <WellbeingSection
         character={character}

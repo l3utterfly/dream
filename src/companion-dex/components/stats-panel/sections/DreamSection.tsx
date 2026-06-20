@@ -12,12 +12,23 @@ import {
   scheduleOutOfBlueMessage,
   selectRandomDreamCandidate,
 } from "../../../libs/dream";
+import { runReflection, type ReadOnYouPromptValues } from "../../../libs/reflect";
 import type { Character } from "../../../types";
 import { layla } from "../laylaClient";
+import {
+  queueSaveSettings,
+  type CompanionDexSettings,
+  type SettingsState,
+} from "../settings";
 import { Block } from "../../MetricSections";
 
 interface DreamSectionProps {
   character: Character;
+  canReflectBeforeDream: boolean;
+  reflectionPromptValues: ReadOnYouPromptValues;
+  settingsState: SettingsState;
+  onSettingsChange: (settings: CompanionDexSettings) => void;
+  onUpdateLaylaCharacter: Parameters<typeof runReflection>[1]["onUpdateLaylaCharacter"];
 }
 
 interface ScheduledMessagesState {
@@ -81,7 +92,14 @@ function scheduledMessagesForCharacter(
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-export function DreamSection({ character }: DreamSectionProps) {
+export function DreamSection({
+  character,
+  canReflectBeforeDream,
+  reflectionPromptValues,
+  settingsState,
+  onSettingsChange,
+  onUpdateLaylaCharacter,
+}: DreamSectionProps) {
   const descriptionId = `dream-description-${character.id}`;
   const dreamControllerRef = useRef<AbortController | null>(null);
   const [scheduledMessagesState, setScheduledMessagesState] =
@@ -225,6 +243,19 @@ export function DreamSection({ character }: DreamSectionProps) {
     });
 
     try {
+      if (canReflectBeforeDream && settingsState.status === "ready") {
+        const reflectionResult = await runReflection(character, {
+          layla,
+          settings: settingsState.settings,
+          promptValues: reflectionPromptValues,
+          signal: controller.signal,
+          onUpdateLaylaCharacter,
+          saveSettings: queueSaveSettings,
+        });
+
+        onSettingsChange(reflectionResult.nextSettings);
+      }
+
       const selectedDream = selectRandomDreamCandidate(
         character.chatHistory,
         scheduledMessages,
@@ -265,7 +296,16 @@ export function DreamSection({ character }: DreamSectionProps) {
         dreamControllerRef.current = null;
       }
     }
-  }, [character, refreshScheduledMessages, scheduledMessages]);
+  }, [
+    canReflectBeforeDream,
+    character,
+    onSettingsChange,
+    onUpdateLaylaCharacter,
+    refreshScheduledMessages,
+    reflectionPromptValues,
+    scheduledMessages,
+    settingsState,
+  ]);
 
   return (
     <Block icon={<MoonStar size={15} />} title="Dream">
