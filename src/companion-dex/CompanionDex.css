@@ -309,6 +309,86 @@
   line-height: 1.55;
 }
 
+.cd-dream-schedule {
+  margin-top: 15px;
+}
+
+.cd-dream-schedule-count {
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.cd-dream-schedule-error {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cd-dream-schedule-spoiler {
+  margin-top: 10px;
+}
+
+.cd-dream-schedule-spoiler summary {
+  width: fit-content;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--primary) 46%, transparent);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s,
+    color 0.5s;
+}
+
+.cd-dream-schedule-spoiler summary:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+.cd-dream-schedule-spoiler summary:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.cd-dream-schedule-list {
+  display: grid;
+  gap: 12px;
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cd-dream-schedule-list li {
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--primary) 54%, transparent);
+}
+
+.cd-dream-schedule-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--deep);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 800;
+  transition: color 0.5s;
+}
+
+.cd-dream-schedule-list p {
+  margin: 5px 0 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
 .cd-reflect-button {
   display: inline-flex;
   align-items: center;
