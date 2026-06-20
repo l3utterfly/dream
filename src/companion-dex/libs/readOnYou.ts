@@ -4,6 +4,20 @@ import type { LaylaChatMessage } from "@layla-network/sdk";
 
 export type ReadOnYouStage = "occasionally chatting" | "frequently chatting" | "always chatting";
 
+export interface ReadOnYouPromptValues extends Record<string, string> {
+  user: string;
+  char: string;
+  description: string;
+  personality: string;
+  stage: ReadOnYouStage;
+  time_together: string;
+  warmth_and_depth: string;
+  previous_impression: string;
+  memories: string;
+  emotions: string;
+  recent_memory: string;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
@@ -151,8 +165,7 @@ export function getRecentMemory(character: Character) {
 
   if (threads.length === 0) return "no recent chats";
 
-  const index = Math.floor(Math.random() * threads.length);
-  return threads[index];
+  return threads[0];
 }
 
 export const SYSTEM_PROMPT = `You are to write an impression of {{user}} from {{char}}'s point of view.
@@ -203,8 +216,8 @@ function renderPromptTemplate(template: string, values: Record<string, string>) 
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, key: string) => values[key.trim()] ?? "");
 }
 
-export function buildReadOnYouMessages(character: Character): LaylaChatMessage[] {
-  const values = {
+export function buildReadOnYouPromptValues(character: Character): ReadOnYouPromptValues {
+  return {
     user: getUserName(character),
     char: getCharacterName(character),
     description: getCharacterDescription(character),
@@ -217,7 +230,12 @@ export function buildReadOnYouMessages(character: Character): LaylaChatMessage[]
     emotions: getEmotions(character),
     recent_memory: getRecentMemory(character),
   };
+}
 
+export function buildReadOnYouMessages(
+  character: Character,
+  values = buildReadOnYouPromptValues(character),
+): LaylaChatMessage[] {
   return [
     {
       role: "system",

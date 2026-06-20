@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@layla-network/sdk": "^0.1.20",
+    "@layla-network/sdk": "^0.1.22",
     "compromise": "^14.15.1",
     "d3-cloud": "^1.2.9",
     "extract-colors": "^4.2.1",

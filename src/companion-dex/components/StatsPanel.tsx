@@ -27,6 +27,7 @@ import { eng, removeStopwords } from "stopword";
 import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
 import {
   buildReadOnYouMessages,
+  buildReadOnYouPromptValues,
   getCharacterName,
   getUserName,
 } from "../libs/readOnYou";
@@ -44,6 +45,8 @@ const EMPTY_TALK_HISTOGRAM = {
 const PRIVATE_LANGUAGE_WIDTH = 432;
 const PRIVATE_LANGUAGE_HEIGHT = 190;
 const PRIVATE_LANGUAGE_WORD_LIMIT = 34;
+const REFLECTION_SETTINGS_FILENAME = "settings.json";
+const REFLECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const EXTRA_PRIVATE_LANGUAGE_STOPWORDS = [
   "cant",
   "character",
@@ -115,6 +118,26 @@ interface ReflectionState {
   error?: string;
 }
 
+interface CharacterReflectionSettings {
+  lastReflectedAt?: number;
+  memories?: string;
+  recentMemory?: string;
+}
+
+interface CharacterSettings {
+  reflection?: CharacterReflectionSettings;
+}
+
+interface CompanionDexSettings {
+  characters?: Record<string, CharacterSettings>;
+}
+
+interface SettingsState {
+  status: "loading" | "ready" | "error";
+  settings: CompanionDexSettings;
+  error?: string;
+}
+
 function reflectionErrorMessage(error: unknown) {
   if (error instanceof LaylaBridgeUnavailableError) {
     return "Open this mini-app inside Layla to reflect.";
@@ -124,8 +147,194 @@ function reflectionErrorMessage(error: unknown) {
     return error.message;
   }
 
+  if (error instanceof Error) {
+    return error.message;
+  }
+
   return "Unable to complete reflection.";
 }
+
+function settingsErrorMessage(error: unknown) {
+  if (error instanceof LaylaBridgeUnavailableError) {
+    return "Open this mini-app inside Layla to check reflection history.";
+  }
+
+  if (error instanceof LaylaError) {
+    return error.message;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unable to check reflection history.";
+}
+
+function contentBase64FromDataUri(contentBase64: string) {
+  const commaIndex = contentBase64.indexOf(",");
+  return commaIndex >= 0 ? contentBase64.slice(commaIndex + 1) : contentBase64;
+}
+
+function base64ToUtf8(contentBase64: string) {
+  const binary = atob(contentBase64FromDataUri(contentBase64));
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function utf8ToBase64(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
+function parseSettings(value: string): CompanionDexSettings {
+  const parsed: unknown = JSON.parse(value);
+
+  if (!parsed || typeof parsed !== "object") return {};
+
+  const settings = parsed as CompanionDexSettings;
+  return settings.characters && typeof settings.characters === "object"
+    ? settings
+    : {};
+}
+
+async function loadReflectionSettings(signal: AbortSignal) {
+  const result = await layla.utils.readFile(REFLECTION_SETTINGS_FILENAME, {
+    signal,
+  });
+
+  if (!result.content_base64) return {};
+
+  try {
+    return parseSettings(base64ToUtf8(result.content_base64));
+  } catch {
+    return {};
+  }
+}
+
+async function saveReflectionSettings(settings: CompanionDexSettings) {
+  const contentBase64 = utf8ToBase64(JSON.stringify(settings, null, 2));
+  const result = await layla.utils.saveFile(
+    REFLECTION_SETTINGS_FILENAME,
+    contentBase64,
+    false,
+  );
+
+  if (!result.success) {
+    throw new Error(result.message ?? "Unable to save reflection history.");
+  }
+}
+
+function withCharacterReflectionSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+  reflection: CharacterReflectionSettings,
+): CompanionDexSettings {
+  const characters = settings.characters ?? {};
+
+  return {
+    ...settings,
+    characters: {
+      ...characters,
+      [characterId]: {
+        ...characters[characterId],
+        reflection,
+      },
+    },
+  };
+}
+
+function characterReflectionSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+) {
+  return settings.characters?.[characterId]?.reflection;
+}
+
+function reflectionGuardState(
+  settings: CompanionDexSettings,
+  characterId: string,
+  memories: string,
+  recentMemory: string,
+  now: number,
+) {
+  const previous = characterReflectionSettings(settings, characterId);
+  const lastReflectedAt =
+    typeof previous?.lastReflectedAt === "number"
+      ? previous.lastReflectedAt
+      : undefined;
+
+  return {
+    memoriesChanged: previous?.memories !== memories,
+    recentMemoryChanged: previous?.recentMemory !== recentMemory,
+    cooldownElapsed:
+      lastReflectedAt === undefined ||
+      now - lastReflectedAt > REFLECTION_COOLDOWN_MS,
+  };
+}
+
+function getReflectTitle({
+  canReflect,
+  character,
+  isReflecting,
+  reflectionGuard,
+  settingsState,
+}: {
+  canReflect: boolean;
+  character: Character;
+  isReflecting: boolean;
+  reflectionGuard: ReturnType<typeof reflectionGuardState>;
+  settingsState: SettingsState;
+}) {
+  if (canReflect) return "Reflect";
+  if (isReflecting) return "Reflecting";
+  if (!character.isChatHistoryLoaded) return "Waiting for chat history";
+  if (character.chatHistoryError) {
+    return `Chat history unavailable: ${character.chatHistoryError}`;
+  }
+
+  if (character.chatSentimentError) {
+    return `Chat sentiment unavailable: ${character.chatSentimentError}`;
+  }
+
+  if (character.isChatSentimentLoading || !character.chatSentiment) {
+    return "Reading chat memories";
+  }
+
+  if (character.isMemoriesLoading) return "Waiting for memories";
+  if (character.memoriesError) {
+    return `Memories unavailable: ${character.memoriesError}`;
+  }
+
+  if (character.memorySentimentError) {
+    return `Memory signal unavailable: ${character.memorySentimentError}`;
+  }
+
+  if (character.isMemorySentimentLoading) return "Reading memory signal";
+  if (character.recentMemories.length === 0) return "Waiting for recent memories";
+  if (settingsState.status === "loading") return "Checking reflection history";
+  if (settingsState.status === "error") {
+    return settingsState.error ?? "Reflection history unavailable";
+  }
+
+  if (!reflectionGuard.memoriesChanged) return "Reflect after memories change";
+  if (!reflectionGuard.recentMemoryChanged) {
+    return "Reflect after the recent exchange changes";
+  }
+
+  if (!reflectionGuard.cooldownElapsed) {
+    return "Reflect again after a day has passed";
+  }
+
+  return "Reflect unavailable";
+}
+
 function formatMomentDate(timestamp: number) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "sometime";
@@ -466,10 +675,46 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     status: "idle",
     text: "",
   });
+  const [settingsState, setSettingsState] = useState<SettingsState>({
+    status: "loading",
+    settings: {},
+  });
+  const [now, setNow] = useState(() => Date.now());
   const reflectionStreamRef = useRef<ChatCompletionStream | null>(null);
+  const settingsRef = useRef<CompanionDexSettings>({});
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
+  }, []);
+  useEffect(() => {
+    settingsRef.current = settingsState.settings;
+  }, [settingsState.settings]);
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void loadReflectionSettings(controller.signal)
+      .then((settings) => {
+        settingsRef.current = settings;
+        setSettingsState({
+          status: "ready",
+          settings,
+        });
+      })
+      .catch((error) => {
+        if (error instanceof LaylaAbortError) return;
+
+        setSettingsState({
+          status: "error",
+          settings: {},
+          error: settingsErrorMessage(error),
+        });
+      });
+
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => window.clearInterval(id);
   }, []);
   useEffect(() => {
     reflectionStreamRef.current?.abort();
@@ -502,7 +747,13 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       return { ...nextTaps, [key]: nextTaps[key] + 1 };
     });
   };
+  const reflectionPromptValues = useMemo(
+    () => buildReadOnYouPromptValues(character),
+    [character],
+  );
   const handleReflect = useCallback(async () => {
+    const promptValues = reflectionPromptValues;
+
     reflectionStreamRef.current?.abort();
     setReflection({
       characterId: character.id,
@@ -514,7 +765,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
 
     try {
       stream = layla.chat.completions.stream({
-        messages: buildReadOnYouMessages(character),
+        messages: buildReadOnYouMessages(character, promptValues),
       });
       reflectionStreamRef.current = stream;
 
@@ -542,6 +793,23 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
             }
           : current,
       );
+
+      const nextSettings = withCharacterReflectionSettings(
+        settingsRef.current,
+        character.id,
+        {
+          lastReflectedAt: Date.now(),
+          memories: promptValues.memories,
+          recentMemory: promptValues.recent_memory,
+        },
+      );
+
+      await saveReflectionSettings(nextSettings);
+      settingsRef.current = nextSettings;
+      setSettingsState({
+        status: "ready",
+        settings: nextSettings,
+      });
     } catch (error) {
       if (error instanceof LaylaAbortError) return;
 
@@ -553,13 +821,13 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
               error: reflectionErrorMessage(error),
             }
           : current,
-      );
+        );
     } finally {
       if (stream && reflectionStreamRef.current === stream) {
         reflectionStreamRef.current = null;
       }
     }
-  }, [character]);
+  }, [character, reflectionPromptValues]);
 
   const trend = character.bond?.trend;
   const trendTimespan = trend
@@ -603,13 +871,55 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     : "";
   const reflectionError =
     activeReflection?.status === "error" ? activeReflection.error : undefined;
-  const canReflect =
+  const reflectionPromptReady =
     character.isChatHistoryLoaded &&
     !character.chatHistoryError &&
+    !character.isChatSentimentLoading &&
+    !character.chatSentimentError &&
+    !!character.chatSentiment &&
     !character.isMemoriesLoading &&
     !character.memoriesError &&
+    !character.isMemorySentimentLoading &&
+    !character.memorySentimentError &&
     character.recentMemories.length > 0;
+  const reflectionGuard = useMemo(
+    () =>
+      reflectionGuardState(
+        settingsState.settings,
+        character.id,
+        reflectionPromptValues.memories,
+        reflectionPromptValues.recent_memory,
+        now,
+      ),
+    [
+      character.id,
+      now,
+      reflectionPromptValues.memories,
+      reflectionPromptValues.recent_memory,
+      settingsState.settings,
+    ],
+  );
+  const canReflect =
+    reflectionPromptReady &&
+    settingsState.status === "ready" &&
+    reflectionGuard.memoriesChanged &&
+    reflectionGuard.recentMemoryChanged &&
+    reflectionGuard.cooldownElapsed;
   const reflectDisabled = isReflecting || !canReflect;
+  const showReflectGuardStatus =
+    !isReflecting &&
+    reflectionPromptReady &&
+    settingsState.status === "ready" &&
+    (!reflectionGuard.memoriesChanged ||
+      !reflectionGuard.recentMemoryChanged ||
+      !reflectionGuard.cooldownElapsed);
+  const reflectTitle = getReflectTitle({
+    canReflect,
+    character,
+    isReflecting,
+    reflectionGuard,
+    settingsState,
+  });
   const privateLanguageLoading =
     !character.isChatHistoryLoaded || character.isMemoriesLoading;
   const privateLanguageHasSource = hasPrivateLanguageSource(character);
@@ -959,15 +1269,18 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
             onClick={handleReflect}
             disabled={reflectDisabled}
             aria-busy={isReflecting}
-            title={
-              canReflect ? "Reflect" : "Waiting for chat history and memories"
-            }
+            title={reflectTitle}
           >
             <Sparkles size={14} />
             <span>Reflect</span>
           </button>
         }
       >
+        {showReflectGuardStatus ? (
+          <p className="cd-reflection-status">
+            no new information to reflect on
+          </p>
+        ) : null}
         <div
           key={`read-${character.id}`}
           className="cd-fade"
