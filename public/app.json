@@ -1,6 +1,6 @@
 {
-  "title": "Characters have thoughts outside of chatting",
-  "tagline": "A template to create your own mini-app powered by Layla.",
+  "title": "Dream",
+  "tagline": "Characters have thoughts outside of chatting.",
   "description": "Installing Dream makes characters have thoughts outside of chatting. Layla's characters will proactively send you messages about various topics in hopes to start a conversation with you.\r\n\r\nFeatures:\r\n    - Proactive messages: Characters can send you messages even when you're not chatting with them, allowing for more dynamic interactions.\r\n    - Reflective thoughts: Characters can reflect on past interactions and share their thoughts with you, creating a deeper connection.\r\n    - Moments worth sharing: Characters can share interesting moments or insights with you, making your experience more enjoyable.",
   "iconUri": "icon.png",
   "backgroundImgUri": "thumbnail.jpg"

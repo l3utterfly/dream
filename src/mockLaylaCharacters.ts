@@ -99,10 +99,10 @@ function makeCharacter(seed: MockCharacterSeed): LaylaCharacter {
   const overrides: Partial<TavernCardV2["data"]> = {
     description: seed.description,
     personality: seed.personality,
-    scenario: "You are chatting inside the CompanionDex mini-app.",
+    scenario: "You are chatting inside the Dream mini-app.",
     first_mes: `Hey, I'm ${seed.name}.`,
     tags: ["mock", ...seed.tags],
-    creator: "CompanionDex",
+    creator: "Dream",
     extensions: {
       image: seed.image,
     },

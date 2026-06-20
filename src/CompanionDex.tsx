@@ -163,7 +163,7 @@ export default function CompanionDex() {
           <div className="cd-top">
             <div className="cd-brand">
               <span style={{ width: 12, height: 12, borderRadius: 4, background: "var(--primary)", transition: "background .6s" }} />
-              CompanionDex
+              Dream
             </div>
           </div>
           <div
