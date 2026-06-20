@@ -1,808 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import cloud from "d3-cloud";
 import {
-  Brain,
-  Clock,
-  Coffee,
-  Cookie,
-  Hand,
-  Heart,
-  Laugh,
-  ListChecks,
-  MessageCircle,
-  Quote,
-  Smile,
-  Sparkles,
-  TrendingDown,
-  TrendingUp,
-  Zap,
-} from "lucide-react";
-import LaylaSDK, {
   LaylaAbortError,
-  LaylaBridgeUnavailableError,
-  LaylaError,
   type ChatCompletionStream,
   type LaylaCharacter,
 } from "@layla-network/sdk";
-import { eng, removeStopwords } from "stopword";
-import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
 import {
   buildReadOnYouMessages,
   buildReadOnYouPromptValues,
-  getCharacterName,
-  getUserName,
 } from "../libs/readOnYou";
-import type { Character, MemorySentimentData, Theme } from "../types";
-import { Avatar } from "./Avatar";
-import { Bar, Block, Heatmap, SectionSpinner, Vital } from "./MetricSections";
-import { CountNum } from "./CountNum";
-
-const EMPTY_MEMORY_SENTIMENT: MemorySentimentData = { scoredTexts: [] };
-const EMPTY_TALK_HISTOGRAM = {
-  hours: Array.from({ length: 24 }, () => 0),
-  peak: "whenever you return",
-  total: 0,
-};
-const PRIVATE_LANGUAGE_WIDTH = 432;
-const PRIVATE_LANGUAGE_HEIGHT = 190;
-const PRIVATE_LANGUAGE_WORD_LIMIT = 34;
-const REFLECTION_SETTINGS_FILENAME = "settings.json";
-const REFLECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const INITIAL_VITAL_MIN = 10;
-const INITIAL_VITAL_MAX = 30;
-const VITAL_SETTINGS_KEYS = {
-  energy: "energy",
-  fed: "hungriness",
-  social: "social",
-} as const satisfies Record<keyof Character["vitals"], string>;
-const EXTRA_PRIVATE_LANGUAGE_STOPWORDS = [
-  "cant",
-  "character",
-  "chat",
-  "chats",
-  "conversation",
-  "conversations",
-  "didnt",
-  "doesnt",
-  "dont",
-  "feel",
-  "feels",
-  "felt",
-  "gonna",
-  "history",
-  "ive",
-  "just",
-  "layla",
-  "like",
-  "likes",
-  "memory",
-  "memories",
-  "message",
-  "messages",
-  "really",
-  "remember",
-  "remembered",
-  "remembering",
-  "remembers",
-  "reply",
-  "replies",
-  "said",
-  "someone",
-  "talk",
-  "talked",
-  "talking",
-  "tend",
-  "tends",
-  "thats",
-  "theyre",
-  "thing",
-  "things",
-  "wanna",
-  "youll",
-  "youre",
-  "youve",
-  "i'm",
-  "im",
-  "okay",
-];
-
-const layla = new LaylaSDK();
-
-type ReflectionStatus = "idle" | "loading" | "done" | "error";
-
-interface PrivateLanguageWord {
-  text: string;
-  value: number;
-  size: number;
-  x?: number;
-  y?: number;
-  rotate?: number;
-}
-
-interface ReflectionState {
-  characterId: string;
-  status: ReflectionStatus;
-  text: string;
-  error?: string;
-}
-
-interface CharacterReflectionSettings {
-  lastReflectedAt?: number;
-  memories?: string;
-  recentMemory?: string;
-}
-
-interface CharacterVitalSettings {
-  value?: number;
-  lastTapped?: number;
-}
-
-type CharacterWellbeingSettings = Partial<
-  Record<(typeof VITAL_SETTINGS_KEYS)[keyof Character["vitals"]], CharacterVitalSettings>
->;
-
-interface CharacterSettings {
-  reflection?: CharacterReflectionSettings;
-  howYouAreDoing?: CharacterWellbeingSettings;
-}
-
-interface CompanionDexSettings {
-  characters?: Record<string, CharacterSettings>;
-}
-
-interface SettingsState {
-  status: "loading" | "ready" | "error";
-  settings: CompanionDexSettings;
-  error?: string;
-}
-
-function reflectionErrorMessage(error: unknown) {
-  if (error instanceof LaylaBridgeUnavailableError) {
-    return "Open this mini-app inside Layla to reflect.";
-  }
-
-  if (error instanceof LaylaError) {
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unable to complete reflection.";
-}
-
-function settingsErrorMessage(error: unknown) {
-  if (error instanceof LaylaBridgeUnavailableError) {
-    return "Open this mini-app inside Layla to check reflection history.";
-  }
-
-  if (error instanceof LaylaError) {
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unable to check reflection history.";
-}
-
-function contentBase64FromDataUri(contentBase64: string) {
-  const commaIndex = contentBase64.indexOf(",");
-  return commaIndex >= 0 ? contentBase64.slice(commaIndex + 1) : contentBase64;
-}
-
-function base64ToUtf8(contentBase64: string) {
-  const binary = atob(contentBase64FromDataUri(contentBase64));
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-function utf8ToBase64(value: string) {
-  const bytes = new TextEncoder().encode(value);
-  const chunkSize = 0x8000;
-  let binary = "";
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-
-  return btoa(binary);
-}
-
-function parseSettings(value: string): CompanionDexSettings {
-  const parsed: unknown = JSON.parse(value);
-
-  if (!parsed || typeof parsed !== "object") return {};
-
-  const settings = parsed as CompanionDexSettings;
-  return settings.characters && typeof settings.characters === "object"
-    ? settings
-    : {};
-}
-
-async function loadReflectionSettings(signal: AbortSignal) {
-  const result = await layla.utils.readFile(REFLECTION_SETTINGS_FILENAME, {
-    signal,
-  });
-
-  if (!result.content_base64) return {};
-
-  try {
-    return parseSettings(base64ToUtf8(result.content_base64));
-  } catch {
-    return {};
-  }
-}
-
-async function saveReflectionSettings(settings: CompanionDexSettings) {
-  const contentBase64 = utf8ToBase64(JSON.stringify(settings, null, 2));
-  const result = await layla.utils.saveFile(
-    REFLECTION_SETTINGS_FILENAME,
-    contentBase64,
-    false,
-  );
-
-  if (!result.success) {
-    throw new Error(result.message ?? "Unable to save reflection history.");
-  }
-}
-
-let settingsSaveQueue = Promise.resolve();
-
-function queueSaveSettings(settings: CompanionDexSettings) {
-  const save = () => saveReflectionSettings(settings);
-  settingsSaveQueue = settingsSaveQueue.then(save, save);
-  return settingsSaveQueue;
-}
-
-function saveSettingsInBackground(settings: CompanionDexSettings) {
-  void queueSaveSettings(settings).catch(() => undefined);
-}
-
-function withCharacterReflectionSettings(
-  settings: CompanionDexSettings,
-  characterId: string,
-  reflection: CharacterReflectionSettings,
-): CompanionDexSettings {
-  const characters = settings.characters ?? {};
-
-  return {
-    ...settings,
-    characters: {
-      ...characters,
-      [characterId]: {
-        ...characters[characterId],
-        reflection,
-      },
-    },
-  };
-}
-
-function characterReflectionSettings(
-  settings: CompanionDexSettings,
-  characterId: string,
-) {
-  return settings.characters?.[characterId]?.reflection;
-}
-
-function randomInitialVital() {
-  return (
-    INITIAL_VITAL_MIN +
-    Math.floor(Math.random() * (INITIAL_VITAL_MAX - INITIAL_VITAL_MIN + 1))
-  );
-}
-
-function validNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function decayVital(value: number, lastTapped: number, now = Date.now()) {
-  const elapsedDays = Math.max(0, now - lastTapped) / DAY_MS;
-  return value * Math.pow(0.5, elapsedDays);
-}
-
-function vitalSettingsKey(key: keyof Character["vitals"]) {
-  return VITAL_SETTINGS_KEYS[key];
-}
-
-function characterVitalSettings(
-  settings: CompanionDexSettings,
-  characterId: string,
-  key: keyof Character["vitals"],
-) {
-  return settings.characters?.[characterId]?.howYouAreDoing?.[
-    vitalSettingsKey(key)
-  ];
-}
-
-function characterVitalValue(
-  settings: CompanionDexSettings,
-  characterId: string,
-  key: keyof Character["vitals"],
-  now: number,
-) {
-  const vital = characterVitalSettings(settings, characterId, key);
-
-  if (!validNumber(vital?.value)) return 0;
-  if (!validNumber(vital.lastTapped)) return Math.max(0, vital.value);
-
-  return Math.max(0, decayVital(vital.value, vital.lastTapped, now));
-}
-
-function withCharacterVitalSettings(
-  settings: CompanionDexSettings,
-  characterId: string,
-  key: keyof Character["vitals"],
-  vital: CharacterVitalSettings,
-): CompanionDexSettings {
-  const characters = settings.characters ?? {};
-  const characterSettings = characters[characterId] ?? {};
-
-  return {
-    ...settings,
-    characters: {
-      ...characters,
-      [characterId]: {
-        ...characterSettings,
-        howYouAreDoing: {
-          ...characterSettings.howYouAreDoing,
-          [vitalSettingsKey(key)]: vital,
-        },
-      },
-    },
-  };
-}
-
-function ensureCharacterVitalSettings(
-  settings: CompanionDexSettings,
-  characterId: string,
-  now: number,
-) {
-  let nextSettings = settings;
-  let changed = false;
-  const keys = Object.keys(VITAL_SETTINGS_KEYS) as Array<keyof Character["vitals"]>;
-
-  for (const key of keys) {
-    const current = characterVitalSettings(nextSettings, characterId, key);
-
-    if (validNumber(current?.value)) {
-      if (!validNumber(current.lastTapped)) {
-        nextSettings = withCharacterVitalSettings(nextSettings, characterId, key, {
-          ...current,
-          lastTapped: now,
-        });
-        changed = true;
-      }
-
-      continue;
-    }
-
-    nextSettings = withCharacterVitalSettings(nextSettings, characterId, key, {
-      value: randomInitialVital(),
-      lastTapped: now,
-    });
-    changed = true;
-  }
-
-  return changed ? nextSettings : settings;
-}
-
-function vitalActionLabel(
-  value: number,
-  defaultLabel: string,
-  states: { low: string; veryLow: string },
-) {
-  const state = value < 30 ? states.veryLow : value < 70 ? states.low : null;
-
-  if (!state) return defaultLabel;
-
-  return (
-    <>
-      <span style={{ color: "var(--primary)" }}>{state}</span> - {defaultLabel}
-    </>
-  );
-}
-
-function reflectionGuardState(
-  settings: CompanionDexSettings,
-  characterId: string,
-  memories: string,
-  recentMemory: string,
-  now: number,
-) {
-  const previous = characterReflectionSettings(settings, characterId);
-  const lastReflectedAt =
-    typeof previous?.lastReflectedAt === "number"
-      ? previous.lastReflectedAt
-      : undefined;
-
-  return {
-    memoriesChanged: previous?.memories !== memories,
-    recentMemoryChanged: previous?.recentMemory !== recentMemory,
-    cooldownElapsed:
-      lastReflectedAt === undefined ||
-      now - lastReflectedAt > REFLECTION_COOLDOWN_MS,
-  };
-}
-
-function getReflectTitle({
-  canReflect,
-  character,
-  isReflecting,
-  reflectionGuard,
-  settingsState,
-}: {
-  canReflect: boolean;
-  character: Character;
-  isReflecting: boolean;
-  reflectionGuard: ReturnType<typeof reflectionGuardState>;
-  settingsState: SettingsState;
-}) {
-  if (canReflect) return "Reflect";
-  if (isReflecting) return "Reflecting";
-  if (!character.isChatHistoryLoaded) return "Waiting for chat history";
-  if (character.chatHistoryError) {
-    return `Chat history unavailable: ${character.chatHistoryError}`;
-  }
-
-  if (character.chatSentimentError) {
-    return `Chat sentiment unavailable: ${character.chatSentimentError}`;
-  }
-
-  if (character.isChatSentimentLoading || !character.chatSentiment) {
-    return "Reading chat memories";
-  }
-
-  if (character.isMemoriesLoading) return "Waiting for memories";
-  if (character.memoriesError) {
-    return `Memories unavailable: ${character.memoriesError}`;
-  }
-
-  if (character.memorySentimentError) {
-    return `Memory signal unavailable: ${character.memorySentimentError}`;
-  }
-
-  if (character.isMemorySentimentLoading) return "Reading memory signal";
-  if (character.recentMemories.length === 0) return "Waiting for recent memories";
-  if (settingsState.status === "loading") return "Checking reflection history";
-  if (settingsState.status === "error") {
-    return settingsState.error ?? "Reflection history unavailable";
-  }
-
-  if (!reflectionGuard.memoriesChanged) return "Reflect after memories change";
-  if (!reflectionGuard.recentMemoryChanged) {
-    return "Reflect after the recent exchange changes";
-  }
-
-  if (!reflectionGuard.cooldownElapsed) {
-    return "Reflect again after a day has passed";
-  }
-
-  return "Reflect unavailable";
-}
-
-function formatMomentDate(timestamp: number) {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "sometime";
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const momentDay = new Date(date);
-  momentDay.setHours(0, 0, 0, 0);
-  const daysAgo = Math.round(
-    (today.getTime() - momentDay.getTime()) / (24 * 60 * 60 * 1000),
-  );
-
-  if (daysAgo === 0) return "today";
-  if (daysAgo === 1) return "yesterday";
-  if (daysAgo > 1 && daysAgo < 7) return `${daysAgo} days ago`;
-
-  const options: Intl.DateTimeFormatOptions =
-    date.getFullYear() === new Date().getFullYear()
-      ? { month: "short", day: "numeric" }
-      : { month: "short", day: "numeric", year: "numeric" };
-
-  return new Intl.DateTimeFormat(undefined, options).format(date);
-}
-
-function dateFromTimestamp(timestamp: number) {
-  if (!Number.isFinite(timestamp)) return null;
-
-  const milliseconds =
-    Math.abs(timestamp) < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-  const date = new Date(milliseconds);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatHour(hour: number) {
-  const date = new Date(2020, 0, 1, hour);
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(date);
-}
-
-function summarizePeakHour(hours: number[]) {
-  const peakCount = Math.max(...hours);
-  if (peakCount <= 0) return "whenever you return";
-
-  const peakHour = hours.findIndex((count) => count === peakCount);
-  return `around ${formatHour(peakHour)}`;
-}
-
-function buildTalkHistogram(chatHistory: Character["chatHistory"]) {
-  if (chatHistory.length === 0) return EMPTY_TALK_HISTOGRAM;
-
-  const hours = Array.from({ length: 24 }, () => 0);
-  let total = 0;
-
-  for (const entry of chatHistory) {
-    const date = dateFromTimestamp(entry.timestamp);
-    if (!date) continue;
-
-    hours[date.getHours()] += 1;
-    total += 1;
-  }
-
-  return {
-    hours,
-    peak: summarizePeakHour(hours),
-    total,
-  };
-}
-
-function dayOrdinalFromTimestamp(timestamp: number) {
-  const date = dateFromTimestamp(timestamp);
-  if (!date) return null;
-
-  return (
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000
-  );
-}
-
-function countLongestDayStreak(chatHistory: Character["chatHistory"]) {
-  const days = Array.from(
-    new Set(
-      chatHistory
-        .map((entry) => dayOrdinalFromTimestamp(entry.timestamp))
-        .filter((day): day is number => day !== null),
-    ),
-  ).sort((a, b) => a - b);
-
-  let longest = 0;
-  let current = 0;
-  let previous: number | null = null;
-
-  for (const day of days) {
-    current = previous !== null && day === previous + 1 ? current + 1 : 1;
-    longest = Math.max(longest, current);
-    previous = day;
-  }
-
-  return longest;
-}
-
-function countUniqueHighIntensityEmotions(character: Character) {
-  const emotions = new Set<string>();
-
-  for (const scoredText of character.chatSentiment?.scoredTexts ?? []) {
-    for (const [emotion, intensity] of Object.entries(
-      scoredText.sentimentValue,
-    )) {
-      if (emotion !== "neutral" && intensity > 0.5) {
-        emotions.add(emotion);
-      }
-    }
-  }
-
-  return emotions.size;
-}
-
-function cleanPrivateLanguageText(value: string | null | undefined) {
-  return value?.trim().replace(/\s+/g, " ") ?? "";
-}
-
-function hasPrivateLanguageSource(character: Character) {
-  return (
-    character.chatHistory.some((entry) =>
-      cleanPrivateLanguageText(entry.content),
-    ) ||
-    character.recentMemories.some((memory) =>
-      cleanPrivateLanguageText(memory.summary ?? memory.rawText),
-    )
-  );
-}
-
-function tokenizePrivateLanguage(text: string) {
-  return (
-    text
-      .toLowerCase()
-      .replace(/[’]/g, "'")
-      .replace(/['"]s\b/g, "")
-      .match(/[\p{L}\p{N}][\p{L}\p{N}'_-]*/gu)
-      ?.map((token) => token.replace(/^[-_']+|[-_']+$/g, ""))
-      .filter((token) => token.length >= 3 && !/^\d+$/.test(token)) ?? []
-  );
-}
-
-function nameStopwords(...names: string[]) {
-  return names.flatMap((name) => tokenizePrivateLanguage(name));
-}
-
-function buildPrivateLanguageWords(
-  characterName: string,
-  userName: string,
-  chatHistory: Character["chatHistory"],
-  recentMemories: Character["recentMemories"],
-): PrivateLanguageWord[] {
-  const sources = [
-    ...chatHistory.map((entry) => entry.content),
-    ...recentMemories.map((memory) => memory.summary ?? memory.rawText),
-  ];
-  const tokens = tokenizePrivateLanguage(sources.join(" "));
-  const stopwords = [
-    ...eng,
-    ...EXTRA_PRIVATE_LANGUAGE_STOPWORDS,
-    ...nameStopwords(characterName, userName),
-  ];
-  const words = removeStopwords(tokens, stopwords);
-  const counts = new Map<string, number>();
-
-  for (const word of words) {
-    counts.set(word, (counts.get(word) ?? 0) + 1);
-  }
-
-  const ranked = Array.from(counts, ([text, value]) => ({ text, value }))
-    .sort((a, b) => b.value - a.value || a.text.localeCompare(b.text))
-    .slice(0, PRIVATE_LANGUAGE_WORD_LIMIT);
-  const max = Math.max(...ranked.map((word) => word.value), 1);
-  const min = Math.min(...ranked.map((word) => word.value), max);
-
-  return ranked.map((word) => {
-    const t = max === min ? 0.62 : (word.value - min) / (max - min);
-    return {
-      ...word,
-      size: Math.round(15 + Math.pow(t, 0.72) * 23),
-    };
-  });
-}
-
-function hashString(value: string) {
-  let hash = 2166136261;
-
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return hash >>> 0;
-}
-
-function seededRandom(seedText: string) {
-  let seed = hashString(seedText) || 1;
-
-  return () => {
-    seed += 0x6d2b79f5;
-    let t = seed;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function PrivateLanguageCloud({ character }: { character: Character }) {
-  const characterName = getCharacterName(character);
-  const userName = getUserName(character);
-  const words = useMemo(
-    () =>
-      buildPrivateLanguageWords(
-        characterName,
-        userName,
-        character.chatHistory,
-        character.recentMemories,
-      ),
-    [character.chatHistory, characterName, character.recentMemories, userName],
-  );
-  const layoutSeed = useMemo(
-    () =>
-      `${character.id}:${words
-        .map((word) => `${word.text}:${word.value}`)
-        .join("|")}`,
-    [character.id, words],
-  );
-  const [layoutState, setLayoutState] = useState<{
-    seed: string;
-    words: PrivateLanguageWord[];
-  } | null>(null);
-  const layoutWords = layoutState?.seed === layoutSeed ? layoutState.words : [];
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (words.length === 0) return undefined;
-
-    const layout = cloud<PrivateLanguageWord>()
-      .size([PRIVATE_LANGUAGE_WIDTH, PRIVATE_LANGUAGE_HEIGHT])
-      .words(words.map((word) => ({ ...word })))
-      .padding((word) => (word.value > 2 ? 3 : 2))
-      .rotate(() => 0)
-      .font("Fredoka")
-      .fontWeight((word) => (word.value > 2 ? 700 : 600))
-      .fontSize((word) => word.size)
-      .random(seededRandom(layoutSeed))
-      .on("end", (placedWords) => {
-        if (cancelled) return;
-        setLayoutState({
-          seed: layoutSeed,
-          words: placedWords.filter(
-            (word) => typeof word.x === "number" && typeof word.y === "number",
-          ),
-        });
-      });
-
-    layout.start();
-
-    return () => {
-      cancelled = true;
-      layout.stop();
-    };
-  }, [layoutSeed, words]);
-
-  if (words.length === 0) {
-    return (
-      <p
-        className="cd-fade"
-        style={{
-          margin: 0,
-          fontSize: 13.5,
-          color: "var(--ink-2)",
-          lineHeight: 1.45,
-        }}
-      >
-        No private language yet.
-      </p>
-    );
-  }
-
-  return (
-    <div className="cd-language-cloud" aria-live="polite">
-      {layoutWords.length === 0 ? (
-        <SectionSpinner label="Shaping private language" />
-      ) : (
-        <svg
-          role="img"
-          aria-label={`Word cloud from your chats and memories with ${character.name}`}
-          viewBox={`0 0 ${PRIVATE_LANGUAGE_WIDTH} ${PRIVATE_LANGUAGE_HEIGHT}`}
-        >
-          <g
-            transform={`translate(${PRIVATE_LANGUAGE_WIDTH / 2} ${PRIVATE_LANGUAGE_HEIGHT / 2})`}
-          >
-            {layoutWords.map((word) => (
-              <text
-                key={`${word.text}-${word.value}`}
-                textAnchor="middle"
-                transform={`translate(${word.x ?? 0} ${word.y ?? 0})`}
-                style={{
-                  fill: word.value > 2 ? "var(--deep)" : "var(--ink-1)",
-                  fontFamily: "var(--display)",
-                  fontSize: word.size,
-                  fontWeight: word.value > 2 ? 700 : 600,
-                  opacity: Math.min(1, 0.52 + word.value * 0.12),
-                }}
-              >
-                <title>
-                  {word.text} · {word.value}{" "}
-                  {word.value === 1 ? "time" : "times"}
-                </title>
-                {word.text}
-              </text>
-            ))}
-          </g>
-        </svg>
-      )}
-    </div>
-  );
-}
+import type { Character, Theme } from "../types";
+import { layla } from "./stats-panel/laylaClient";
+import {
+  characterVitalValue,
+  ensureCharacterVitalSettings,
+  loadPanelSettings,
+  queueSaveSettings,
+  saveSettingsInBackground,
+  settingsErrorMessage,
+  withCharacterReflectionSettings,
+  withCharacterVitalSettings,
+  type CompanionDexSettings,
+  type SettingsState,
+} from "./stats-panel/settings";
+import {
+  getReflectTitle,
+  reflectionErrorMessage,
+  reflectionGuardState,
+  withImpression,
+  type ReflectionState,
+} from "./stats-panel/reflection";
+import { BondSection } from "./stats-panel/sections/BondSection";
+import { ImpressionSection } from "./stats-panel/sections/ImpressionSection";
+import { MemoriesSection } from "./stats-panel/sections/MemoriesSection";
+import { MomentsSection } from "./stats-panel/sections/MomentsSection";
+import { NumbersSection } from "./stats-panel/sections/NumbersSection";
+import { PrivateLanguageSection } from "./stats-panel/sections/PrivateLanguageSection";
+import { StatsPanelHeader } from "./stats-panel/sections/StatsPanelHeader";
+import { TalkRhythmSection } from "./stats-panel/sections/TalkRhythmSection";
+import { ThreadsSection } from "./stats-panel/sections/ThreadsSection";
+import { WellbeingSection } from "./stats-panel/sections/WellbeingSection";
 
 interface StatsPanelProps {
   character: Character;
@@ -814,25 +50,6 @@ interface StatsPanelProps {
   ) => Promise<LaylaCharacter>;
 }
 
-function withImpression(
-  character: LaylaCharacter,
-  impression: string,
-): LaylaCharacter {
-  return {
-    ...character,
-    data: {
-      ...character.data,
-      data: {
-        ...character.data.data,
-        extensions: {
-          ...character.data.data.extensions,
-          impression,
-        },
-      },
-    },
-  };
-}
-
 export function StatsPanel({
   character,
   theme,
@@ -840,7 +57,6 @@ export function StatsPanel({
   onUpdateLaylaCharacter,
 }: StatsPanelProps) {
   const [mounted, setMounted] = useState(false);
-
   const [reflection, setReflection] = useState<ReflectionState>({
     characterId: character.id,
     status: "idle",
@@ -853,17 +69,20 @@ export function StatsPanel({
   const [now, setNow] = useState(() => Date.now());
   const reflectionStreamRef = useRef<ChatCompletionStream | null>(null);
   const settingsRef = useRef<CompanionDexSettings>({});
+
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
   useEffect(() => {
     settingsRef.current = settingsState.settings;
   }, [settingsState.settings]);
+
   useEffect(() => {
     const controller = new AbortController();
 
-    void loadReflectionSettings(controller.signal)
+    void loadPanelSettings(controller.signal)
       .then((settings) => {
         settingsRef.current = settings;
         setSettingsState({
@@ -883,10 +102,12 @@ export function StatsPanel({
 
     return () => controller.abort();
   }, []);
+
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 60 * 1000);
     return () => window.clearInterval(id);
   }, []);
+
   useEffect(() => {
     if (settingsState.status !== "ready") return;
 
@@ -906,6 +127,7 @@ export function StatsPanel({
     });
     saveSettingsInBackground(nextSettings);
   }, [character.id, settingsState.status, settingsState.settings]);
+
   useEffect(() => {
     reflectionStreamRef.current?.abort();
     reflectionStreamRef.current = null;
@@ -921,12 +143,13 @@ export function StatsPanel({
     };
   }, [character.id]);
 
-  const v = (n: number) => (mounted ? n : 0);
+  const value = (n: number) => (mounted ? n : 0);
   const vitalValue = (key: keyof Character["vitals"]) =>
-    v(characterVitalValue(settingsState.settings, character.id, key, now));
+    value(characterVitalValue(settingsState.settings, character.id, key, now));
   const energyValue = vitalValue("energy");
   const fedValue = vitalValue("fed");
   const socialValue = vitalValue("social");
+
   const tapVital = (key: keyof Character["vitals"]) => {
     const tappedAt = Date.now();
     const nextValue =
@@ -949,10 +172,12 @@ export function StatsPanel({
     });
     saveSettingsInBackground(nextSettings);
   };
+
   const reflectionPromptValues = useMemo(
     () => buildReadOnYouPromptValues(character),
     [character],
   );
+
   const handleReflect = useCallback(async () => {
     const promptValues = reflectionPromptValues;
 
@@ -1028,7 +253,7 @@ export function StatsPanel({
               error: reflectionErrorMessage(error),
             }
           : current,
-        );
+      );
     } finally {
       if (stream && reflectionStreamRef.current === stream) {
         reflectionStreamRef.current = null;
@@ -1036,46 +261,10 @@ export function StatsPanel({
     }
   }, [character, onUpdateLaylaCharacter, reflectionPromptValues]);
 
-  const trend = character.bond?.trend;
-  const trendTimespan = trend
-    ? trend.timespanWeeks > 0
-      ? `${trend.timespanWeeks} ${trend.timespanWeeks === 1 ? "week" : "weeks"}`
-      : trend.timespanDays > 0
-        ? `${trend.timespanDays} ${trend.timespanDays === 1 ? "day" : "days"}`
-        : "today"
-    : "today";
-  const trendDifference = trend?.difference ?? 0;
-  const momentsWorthKeeping = useMemo(() => {
-    if (!character.chatSentiment) return [];
-
-    return selectMomentsWorthKeeping(
-      character.chatSentiment,
-      character.memorySentiment ?? EMPTY_MEMORY_SENTIMENT,
-    );
-  }, [character.chatSentiment, character.memorySentiment]);
-  const talkHistogram = useMemo(
-    () => buildTalkHistogram(character.chatHistory),
-    [character.chatHistory],
-  );
-  const byTheNumbers = useMemo(
-    () => ({
-      chatHistories: character.chatHistory.length,
-      dayStreak: countLongestDayStreak(character.chatHistory),
-      emotions: countUniqueHighIntensityEmotions(character),
-    }),
-    [character],
-  );
-  const momentsLoading =
-    character.isChatSentimentLoading ||
-    (character.isMemorySentimentLoading &&
-      !character.memorySentiment &&
-      !character.memorySentimentError);
   const activeReflection =
     reflection.characterId === character.id ? reflection : null;
   const isReflecting = activeReflection?.status === "loading";
-  const reflectedText = activeReflection?.text.trim()
-    ? activeReflection.text
-    : "";
+  const reflectedText = activeReflection?.text.trim() ? activeReflection.text : "";
   const reflectionError =
     activeReflection?.status === "error" ? activeReflection.error : undefined;
   const reflectionPromptReady =
@@ -1127,506 +316,38 @@ export function StatsPanel({
     reflectionGuard,
     settingsState,
   });
-  const privateLanguageLoading =
-    !character.isChatHistoryLoaded || character.isMemoriesLoading;
-  const privateLanguageHasSource = hasPrivateLanguageSource(character);
-  const privateLanguageError =
-    [character.chatHistoryError, character.memoriesError]
-      .filter(Boolean)
-      .join(" ") || undefined;
-  const statItems = [
-    {
-      node: <CountNum value={byTheNumbers.dayStreak} />,
-      small: "day streak",
-      icon: <Coffee size={15} />,
-    },
-    {
-      node: (
-        <CountNum
-          value={byTheNumbers.chatHistories}
-          format={(n) => n.toLocaleString()}
-        />
-      ),
-      small: "chat histories",
-      icon: <MessageCircle size={15} />,
-    },
-    {
-      node: <CountNum value={byTheNumbers.emotions} />,
-      small: "emotions",
-      icon: <Laugh size={15} />,
-    },
-  ];
 
   return (
     <div style={{ padding: "0 24px 8px" }}>
-      <div
-        key={`id-${character.id}`}
-        className="cd-fade"
-        style={{ textAlign: "center" }}
-      >
-        <Avatar character={character} theme={theme} failed={imageFailed} />
-        <h2
-          style={{
-            fontFamily: "var(--display)",
-            fontSize: 38,
-            margin: "16px 0 0",
-            color: "var(--text)",
-            lineHeight: 1,
-          }}
-        >
-          {character.name}
-        </h2>
-        <p
-          style={{
-            margin: "12px 0 0",
-            fontSize: 14,
-            color: "var(--ink-1)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            maxWidth: 360,
-          }}
-        >
-          <span className="cd-mood-dot" />
-          <span>
-            <strong style={{ color: "var(--deep)", textTransform: "capitalize" }}>
-              {character.mainMood}
-            </strong>{" "}
-            — From last message
-          </span>
-        </p>
-        <div
-          style={{
-            marginTop: 14,
-            display: "flex",
-            justifyContent: "center",
-            gap: 12,
-            fontFamily: "var(--mono)",
-            fontSize: 12,
-            color: "var(--ink-2)",
-          }}
-        >
-          <span
-            style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
-          >
-            <Clock size={12} /> {character.lastChat}
-          </span>
-          <span>·</span>
-          <span>
-            {character.daysKnown} days
-          </span>
-        </div>
-      </div>
-
-      <Block icon={<Heart size={15} />} title="Your bond">
-        {character.isBondLoading ? (
-          <SectionSpinner label="Reading conversation signal" />
-        ) : character.bondError ? (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            Bond unavailable: {character.bondError}
-          </p>
-        ) : character.bond ? (
-          <div key={`bond-${character.id}`} className="cd-fade">
-            <Bar label="WARMTH" value={v(character.bond.warmth)} />
-            <Bar label="DEPTH" value={v(character.bond.depth)} />
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: 16,
-              }}
-            >
-              <span
-                style={{ fontSize: 12, color: "var(--ink-2)", fontWeight: 600 }}
-              >
-                trend · {trendTimespan}
-              </span>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: trendDifference >= 0 ? "var(--deep)" : "var(--muted)",
-                  fontFamily: "var(--mono)",
-                  transition: "color .5s",
-                }}
-              >
-                {trendDifference >= 0 ? (
-                  <TrendingUp size={15} />
-                ) : (
-                  <TrendingDown size={15} />
-                )}
-                {trendDifference >= 0 ? "+" : ""}
-                {trendDifference}
-              </span>
-            </div>
-          </div>
-        ) : null}
-      </Block>
-
-      <Block icon={<Sparkles size={15} />} title="How they're doing">
-        <div style={{ display: "flex", gap: 8 }}>
-          <Vital
-            icon={<Zap size={18} />}
-            label={vitalActionLabel(energyValue, "Poke", {
-              low: "Bored",
-              veryLow: "Sleepy",
-            })}
-            ariaLabel={energyValue < 30 ? "Sleepy - Poke" : energyValue < 70 ? "Bored - Poke" : "Poke"}
-            value={energyValue}
-            onTap={() => tapVital("energy")}
-          />
-          <Vital
-            icon={<Cookie size={18} />}
-            label={vitalActionLabel(fedValue, "Feed", {
-              low: "Peckish",
-              veryLow: "Hungry",
-            })}
-            ariaLabel={fedValue < 30 ? "Hungry - Feed" : fedValue < 70 ? "Peckish - Feed" : "Feed"}
-            value={fedValue}
-            onTap={() => tapVital("fed")}
-          />
-          <Vital
-            icon={<Hand size={18} />}
-            label={vitalActionLabel(socialValue, "Wave", {
-              low: "Neglectd",
-              veryLow: "Lonely",
-            })}
-            ariaLabel={socialValue < 30 ? "Lonely - Wave" : socialValue < 70 ? "Neglectd - Wave" : "Wave"}
-            value={socialValue}
-            onTap={() => tapVital("social")}
-          />
-        </div>
-      </Block>
-
-      <Block icon={<Brain size={15} />} title="Holds in mind about you">
-        {character.isMemoriesLoading ? (
-          <SectionSpinner label="Gathering memories" />
-        ) : character.memoriesError ? (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            Memories unavailable: {character.memoriesError}
-          </p>
-        ) : character.remembers.length > 0 ? (
-          <div
-            key={`rem-${character.id}`}
-            className="cd-memory-scroller cd-fade"
-            aria-label={`Top memories ${character.name} holds about you`}
-          >
-            {character.remembers.map((memory, i) => (
-              <figure
-                key={i}
-                className={
-                  memory.fresh
-                    ? "cd-memory-card cd-memory-card-primary"
-                    : "cd-memory-card"
-                }
-              >
-                <blockquote>{memory.fact}</blockquote>
-              </figure>
-            ))}
-          </div>
-        ) : (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            No memories yet.
-          </p>
-        )}
-      </Block>
-
-      <Block icon={<ListChecks size={15} />} title="Open threads">
-        <div key={`thr-${character.id}`} className="cd-fade">
-          {character.threads.map((thread, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                gap: 11,
-                alignItems: "flex-start",
-                padding: "9px 0",
-              }}
-            >
-              <span
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 6,
-                  border: "2px solid var(--primary)",
-                  flexShrink: 0,
-                  marginTop: 2,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 14.5,
-                  color: "var(--ink-1)",
-                  lineHeight: 1.45,
-                }}
-              >
-                {thread}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Block>
-
-      <Block icon={<Quote size={15} />} title="Moments worth keeping">
-        {momentsLoading ? (
-          <SectionSpinner label="Finding keepable moments" />
-        ) : character.chatSentimentError ? (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            Moments unavailable: {character.chatSentimentError}
-          </p>
-        ) : momentsWorthKeeping.length > 0 ? (
-          <div key={`mom-${character.id}`} className="cd-fade">
-            {momentsWorthKeeping.map((moment, i) => (
-              <figure
-                key={`${moment.timestamp}-${i}`}
-                className={
-                  i === 0
-                    ? "cd-moment-card cd-moment-card-primary"
-                    : "cd-moment-card"
-                }
-              >
-                <blockquote>&ldquo;{moment.quote}&rdquo;</blockquote>
-                <figcaption>
-                  {moment.summary ? <span>{moment.summary}</span> : null}
-                  <time dateTime={new Date(moment.timestamp).toISOString()}>
-                    {formatMomentDate(moment.timestamp)}
-                  </time>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        ) : (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            No keepable moments yet.
-          </p>
-        )}
-      </Block>
-
-      <Block icon={<Clock size={15} />} title="When you two talk">
-        {!character.isChatHistoryLoaded ? (
-          <SectionSpinner label="Mapping talk rhythm" />
-        ) : character.chatHistoryError ? (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            Talk pattern unavailable: {character.chatHistoryError}
-          </p>
-        ) : talkHistogram.total > 0 ? (
-          <Heatmap hours={talkHistogram.hours} peak={talkHistogram.peak} />
-        ) : (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            No chat history yet.
-          </p>
-        )}
-      </Block>
-
-      <Block
-        icon={<Smile size={15} />}
-        title="Their Impression of You"
-        action={
-          <button
-            type="button"
-            className="cd-reflect-button"
-            onClick={handleReflect}
-            disabled={reflectDisabled}
-            aria-busy={isReflecting}
-            title={reflectTitle}
-          >
-            <Sparkles size={14} />
-            <span>Reflect</span>
-          </button>
-        }
-      >
-        {showReflectGuardStatus ? (
-          <p className="cd-reflection-status">
-            no new information to reflect on
-          </p>
-        ) : null}
-        <div
-          key={`read-${character.id}`}
-          className="cd-fade"
-          aria-live="polite"
-        >
-          {reflectedText ? (
-            <p className="cd-reflection-text">
-              {reflectedText}
-              {isReflecting ? (
-                <span className="cd-reflection-caret" aria-hidden />
-              ) : null}
-            </p>
-          ) : isReflecting ? (
-            <div
-              className="cd-reflection-loading"
-              role="status"
-              aria-label="Reflecting"
-            >
-              <span className="cd-reflection-orbit" aria-hidden>
-                <span />
-                <span />
-                <span />
-              </span>
-              <span className="cd-reflection-shimmer" aria-hidden />
-              <span
-                className="cd-reflection-shimmer cd-reflection-shimmer-short"
-                aria-hidden
-              />
-            </div>
-          ) : (
-            <>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 15.5,
-                  lineHeight: 1.55,
-                  color: "var(--ink-1)",
-                }}
-              >
-                Right now, {character.name} {character.theirRead}
-              </p>
-              <p
-                style={{
-                  margin: "12px 0 0",
-                  fontSize: 14,
-                  lineHeight: 1.55,
-                  color: "var(--ink-2)",
-                  fontStyle: "italic",
-                }}
-              >
-                {character.impression}
-              </p>
-            </>
-          )}
-          {reflectionError ? (
-            <p className="cd-reflection-error">
-              Reflection unavailable: {reflectionError}
-            </p>
-          ) : null}
-        </div>
-      </Block>
-
-      <Block icon={<TrendingUp size={15} />} title="By the numbers">
-        <div style={{ display: "flex" }}>
-          {statItems.map((stat, i) => (
-            <div
-              key={i}
-              style={{
-                flex: 1,
-                textAlign: "center",
-                borderLeft: i ? "1px solid var(--hair)" : "none",
-              }}
-            >
-              <div
-                style={{
-                  color: "var(--primary)",
-                  display: "flex",
-                  justifyContent: "center",
-                  marginBottom: 6,
-                  transition: "color .5s",
-                }}
-              >
-                {stat.icon}
-              </div>
-              <div
-                style={{
-                  fontFamily: "var(--display)",
-                  fontSize: 24,
-                  color: "var(--deep)",
-                  lineHeight: 1,
-                  transition: "color .5s",
-                }}
-              >
-                {stat.node}
-              </div>
-              <div
-                style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 3 }}
-              >
-                {stat.small}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Block>
-
-      <Block icon={<Sparkles size={15} />} title="Your private language">
-        {privateLanguageLoading && !privateLanguageHasSource ? (
-          <SectionSpinner label="Reading private language" />
-        ) : privateLanguageError && !privateLanguageHasSource ? (
-          <p
-            className="cd-fade"
-            style={{
-              margin: 0,
-              fontSize: 13.5,
-              color: "var(--ink-2)",
-              lineHeight: 1.45,
-            }}
-          >
-            Private language unavailable: {privateLanguageError}
-          </p>
-        ) : (
-          <div key={`lang-${character.id}`} className="cd-fade">
-            <PrivateLanguageCloud character={character} />
-          </div>
-        )}
-      </Block>
-
+      <StatsPanelHeader
+        character={character}
+        theme={theme}
+        imageFailed={imageFailed}
+      />
+      <BondSection character={character} value={value} />
+      <WellbeingSection
+        character={character}
+        energyValue={energyValue}
+        fedValue={fedValue}
+        socialValue={socialValue}
+        onTapVital={tapVital}
+      />
+      <MemoriesSection character={character} />
+      <ThreadsSection character={character} />
+      <MomentsSection character={character} />
+      <TalkRhythmSection character={character} />
+      <ImpressionSection
+        character={character}
+        isReflecting={isReflecting}
+        reflectDisabled={reflectDisabled}
+        reflectTitle={reflectTitle}
+        showReflectGuardStatus={showReflectGuardStatus}
+        reflectedText={reflectedText}
+        reflectionError={reflectionError}
+        onReflect={handleReflect}
+      />
+      <NumbersSection character={character} />
+      <PrivateLanguageSection character={character} />
       <div style={{ height: 44 }} />
     </div>
   );
