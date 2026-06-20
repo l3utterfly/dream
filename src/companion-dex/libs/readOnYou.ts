@@ -149,17 +149,18 @@ export function getMemories(character: Character) {
 }
 
 export function getEmotions(character: Character) {
-    let e = 'Neutral';
-    if(character.vitals.energy < 30) e = 'Sleepy';
-    else if(character.vitals.energy > 70) e = 'Energetic';
-    
-    const f = 'Normal';
-    if(character.vitals.fed < 30) e += 'Hungry';
-    else if(character.vitals.fed > 70) e += 'Well-fed';
+    let e = 'Bored';
+    if (character.vitals.energy < 30) e = 'Sleepy';
+    else if (character.vitals.energy > 70) e = 'Energetic';
 
-    let s = 'Ambivalent';
-    if(character.vitals.social < 30) s = 'Lonely';
-    else if(character.vitals.social > 70) s = 'Warm';
+    let f = 'Peckish';
+    if (character.vitals.fed < 30) f = 'Hungry';
+    else if (character.vitals.fed > 70) f = 'Fed';
+
+    let s = 'Content';
+    if (character.vitals.social < 30) s = 'Lonely';
+    else if (character.vitals.social > 70) s = 'Warm';
+
     return `${e}, ${f}, ${s}`;
 }
 

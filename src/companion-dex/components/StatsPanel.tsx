@@ -390,6 +390,22 @@ function ensureCharacterVitalSettings(
   return changed ? nextSettings : settings;
 }
 
+function vitalActionLabel(
+  value: number,
+  defaultLabel: string,
+  states: { low: string; veryLow: string },
+) {
+  const state = value < 30 ? states.veryLow : value < 70 ? states.low : null;
+
+  if (!state) return defaultLabel;
+
+  return (
+    <>
+      <span style={{ color: "var(--primary)" }}>{state}</span> - {defaultLabel}
+    </>
+  );
+}
+
 function reflectionGuardState(
   settings: CompanionDexSettings,
   characterId: string,
@@ -908,6 +924,9 @@ export function StatsPanel({
   const v = (n: number) => (mounted ? n : 0);
   const vitalValue = (key: keyof Character["vitals"]) =>
     v(characterVitalValue(settingsState.settings, character.id, key, now));
+  const energyValue = vitalValue("energy");
+  const fedValue = vitalValue("fed");
+  const socialValue = vitalValue("social");
   const tapVital = (key: keyof Character["vitals"]) => {
     const tappedAt = Date.now();
     const nextValue =
@@ -1260,20 +1279,32 @@ export function StatsPanel({
         <div style={{ display: "flex", gap: 8 }}>
           <Vital
             icon={<Zap size={18} />}
-            label="Poke"
-            value={vitalValue("energy")}
+            label={vitalActionLabel(energyValue, "Poke", {
+              low: "Bored",
+              veryLow: "Sleepy",
+            })}
+            ariaLabel={energyValue < 30 ? "Sleepy - Poke" : energyValue < 70 ? "Bored - Poke" : "Poke"}
+            value={energyValue}
             onTap={() => tapVital("energy")}
           />
           <Vital
             icon={<Cookie size={18} />}
-            label="Feed"
-            value={vitalValue("fed")}
+            label={vitalActionLabel(fedValue, "Feed", {
+              low: "Peckish",
+              veryLow: "Hungry",
+            })}
+            ariaLabel={fedValue < 30 ? "Hungry - Feed" : fedValue < 70 ? "Peckish - Feed" : "Feed"}
+            value={fedValue}
             onTap={() => tapVital("fed")}
           />
           <Vital
             icon={<Hand size={18} />}
-            label="Wave"
-            value={vitalValue("social")}
+            label={vitalActionLabel(socialValue, "Wave", {
+              low: "Neglectd",
+              veryLow: "Lonely",
+            })}
+            ariaLabel={socialValue < 30 ? "Lonely - Wave" : socialValue < 70 ? "Neglectd - Wave" : "Wave"}
+            value={socialValue}
             onTap={() => tapVital("social")}
           />
         </div>

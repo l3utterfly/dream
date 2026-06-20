@@ -124,12 +124,13 @@ export function Sparkline({ data }: SparklineProps) {
 
 interface VitalProps {
   icon: ReactNode;
-  label: string;
+  label: ReactNode;
+  ariaLabel: string;
   value: number;
   onTap?: () => void;
 }
 
-export function Vital({ icon, label, value, onTap }: VitalProps) {
+export function Vital({ icon, label, ariaLabel, value, onTap }: VitalProps) {
   const r = 22;
   const circ = 2 * Math.PI * r;
   const progress = Math.max(0, Math.min(value, 100));
@@ -181,7 +182,7 @@ export function Vital({ icon, label, value, onTap }: VitalProps) {
 
   if (onTap) {
     return (
-      <button type="button" className="cd-vital-button" onClick={handleTap} aria-label={`${label}: ${value}`}>
+      <button type="button" className="cd-vital-button" onClick={handleTap} aria-label={`${ariaLabel}: ${value}`}>
         {content}
       </button>
     );
