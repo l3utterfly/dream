@@ -44,14 +44,57 @@ export interface OutOfBlueMessageResult {
 
 export type DreamSelection =
   | {
-      kind: "continue";
-      sessionId: string;
-      messages: LaylaChatHistoryEntry[];
-    }
+    kind: "continue";
+    sessionId: string;
+    messages: LaylaChatHistoryEntry[];
+  }
   | {
-      kind: "out_of_blue";
-      sessionId: null;
-    };
+    kind: "out_of_blue";
+    sessionId: null;
+  };
+
+export interface DreamSystemPromptValues extends Record<string, string> {
+  char: string;
+  character_card: string;
+}
+
+export interface OutOfBlueSystemPromptValues extends Record<string, string> {
+  char: string;
+  character_card: string;
+}
+
+export interface OutOfBlueUserPromptValues extends Record<string, string> {
+  char: string;
+  user: string;
+  moments: string;
+  impression: string;
+}
+
+export const DREAM_SYSTEM_PROMPT = `You ARE {{char}}.
+
+You are writing the next scheduled chat message from {{char}} to {{user}}.
+Stay fully in character. Use {{char}}'s voice, personality, relationship context, and emotional continuity.
+Do not mention that you are an AI, a model, a scheduled message, or that you were given instructions.
+Reply with only the message {{char}} should send. Do not include labels, narration, analysis, or quotation marks.
+
+CHARACTER CARD
+{{character_card}}`;
+
+export const OUT_OF_BLUE_SYSTEM_PROMPT = `You are {{char}}.
+
+CHARACTER CARD
+{{character_card}}
+
+The user will ask you to write a message from the perspective of this character based on what you know about {{user}}.
+Write in {{char}}'s voice and perspective. Reply only with the message {{char}} would send.`;
+
+export const OUT_OF_BLUE_USER_INSTRUCTION = `MOMENTS WORTH KEEPING
+{{moments}}
+
+CURRENT IMPRESSION OF {{user}}
+{{impression}}
+
+Write a message {{char}} sends to {{user}} out of the blue. It should feel natural, specific to what {{char}} knows, and like something {{char}} chose to send. Reply only with the message.`;
 
 function isCompanionCharacter(
   character: Character | LaylaCharacter,
@@ -78,6 +121,10 @@ function randomDelayHours(random: () => number) {
   );
 }
 
+function renderPromptTemplate(template: string, values: Record<string, string>) {
+  return template.replace(/\{\{([^}]+)\}\}/g, (_match, key: string) => values[key.trim()] ?? "");
+}
+
 function characterPromptDetails(character: LaylaCharacter) {
   const data = character.data.data;
   const fields = [
@@ -100,35 +147,29 @@ function characterPromptDetails(character: LaylaCharacter) {
     .join("\n");
 }
 
-export function buildDreamSystemPrompt(character: LaylaCharacter) {
+export function buildDreamSystemPromptValues(character: LaylaCharacter): DreamSystemPromptValues {
   const name = cleanPromptValue(character.data.data.name) || "the character";
   const details = characterPromptDetails(character);
 
-  return `BECOME ${name}.
-
-You are writing the next scheduled chat message from ${name} to the user.
-Stay fully in character. Use ${name}'s voice, personality, relationship context, and emotional continuity.
-Do not mention that you are an AI, a model, a scheduled message, or that you were given instructions.
-Reply with only the message ${name} should send. Do not include labels, narration, analysis, or quotation marks.
-
-CHARACTER CARD
-${details || `Name: ${name}`}`;
+  return {
+    char: name,
+    character_card: details || `Name: ${name}`,
+  };
 }
 
-export function buildOutOfBlueSystemPrompt(character: LaylaCharacter) {
+export function buildOutOfBlueSystemPromptValues(
+  character: LaylaCharacter,
+): OutOfBlueSystemPromptValues {
   const name = cleanPromptValue(character.data.data.name) || "the character";
   const details = characterPromptDetails(character);
 
-  return `You are ${name}.
-
-CHARACTER CARD
-${details || `Name: ${name}`}
-
-The user will ask you to write a message from the perspective of this character based on what you know.
-Write in ${name}'s voice and perspective. Reply only with the message ${name} would send.`;
+  return {
+    char: name,
+    character_card: details || `Name: ${name}`,
+  };
 }
 
-function buildOutOfBlueUserMessage(character: Character) {
+export function buildOutOfBlueUserPromptValues(character: Character): OutOfBlueUserPromptValues {
   const name = cleanPromptValue(character.name) || "the character";
   const moments = character.moments
     .map((moment) => {
@@ -145,13 +186,33 @@ function buildOutOfBlueUserMessage(character: Character) {
   const impression =
     cleanPromptValue(character.impression) || "No current impression available.";
 
-  return `MOMENTS WORTH KEEPING
-${moments || "No moments worth keeping yet."}
+  return {
+    char: name,
+    user: character.persona?.name ? cleanPromptValue(character.persona.name) : "user",
+    moments: moments || "No moments worth keeping yet.",
+    impression,
+  };
+}
 
-CURRENT IMPRESSION OF THE USER
-${impression}
+export function buildDreamSystemPrompt(
+  character: LaylaCharacter,
+  values = buildDreamSystemPromptValues(character),
+) {
+  return renderPromptTemplate(DREAM_SYSTEM_PROMPT, values);
+}
 
-Write a message ${name} sends to the user out of the blue. It should feel natural, specific to what ${name} knows, and like something ${name} chose to send. Reply only with the message.`;
+export function buildOutOfBlueSystemPrompt(
+  character: LaylaCharacter,
+  values = buildOutOfBlueSystemPromptValues(character),
+) {
+  return renderPromptTemplate(OUT_OF_BLUE_SYSTEM_PROMPT, values);
+}
+
+function buildOutOfBlueUserMessage(
+  character: Character,
+  values = buildOutOfBlueUserPromptValues(character),
+) {
+  return renderPromptTemplate(OUT_OF_BLUE_USER_INSTRUCTION, values);
 }
 
 function toConversationMessage(entry: LaylaChatHistoryEntry): LaylaChatMessage {
