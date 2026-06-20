@@ -77,6 +77,9 @@ Stay fully in character. Use {{char}}'s voice, personality, relationship context
 Do not mention that you are an AI, a model, a scheduled message, or that you were given instructions.
 Reply with only the message {{char}} should send. Do not include labels, narration, analysis, or quotation marks.
 
+{{user}} INFORMATION
+{{persona}}
+
 CHARACTER CARD
 {{character_card}}`;
 
@@ -95,16 +98,6 @@ CURRENT IMPRESSION OF {{user}}
 {{impression}}
 
 Write a message {{char}} sends to {{user}} out of the blue. It should feel natural, specific to what {{char}} knows, and like something {{char}} chose to send. Reply only with the message.`;
-
-function isCompanionCharacter(
-  character: Character | LaylaCharacter,
-): character is Character {
-  return "laylaCharacter" in character;
-}
-
-function laylaCharacterFrom(character: Character | LaylaCharacter) {
-  return isCompanionCharacter(character) ? character.laylaCharacter : character;
-}
 
 function cleanPromptValue(value: string | undefined | null) {
   return value?.trim().replace(/\s+/g, " ") ?? "";
@@ -147,13 +140,15 @@ function characterPromptDetails(character: LaylaCharacter) {
     .join("\n");
 }
 
-export function buildDreamSystemPromptValues(character: LaylaCharacter): DreamSystemPromptValues {
-  const name = cleanPromptValue(character.data.data.name) || "the character";
-  const details = characterPromptDetails(character);
+export function buildDreamSystemPromptValues(character: Character): DreamSystemPromptValues {
+  const name = cleanPromptValue(character.name) || "the character";
+  const details = characterPromptDetails(character.laylaCharacter);
 
   return {
     char: name,
     character_card: details || `Name: ${name}`,
+    user: character.persona?.name ? cleanPromptValue(character.persona.name) : "user",
+    persona: character.persona?.description ? cleanPromptValue(character.persona.description) : "",
   };
 }
 
@@ -195,7 +190,7 @@ export function buildOutOfBlueUserPromptValues(character: Character): OutOfBlueU
 }
 
 export function buildDreamSystemPrompt(
-  character: LaylaCharacter,
+  character: Character,
   values = buildDreamSystemPromptValues(character),
 ) {
   return renderPromptTemplate(DREAM_SYSTEM_PROMPT, values);
@@ -369,11 +364,10 @@ export function selectRandomDreamCandidate(
 
 export async function continueConversation(
   chatHistory: LaylaChatHistoryEntry[],
-  character: Character | LaylaCharacter,
+  character: Character,
   options: ContinueConversationOptions = {},
 ): Promise<ContinueConversationResult> {
   const layla = options.layla ?? defaultLayla;
-  const laylaCharacter = laylaCharacterFrom(character);
   const now = options.now ?? Date.now();
   const delayHours = options.delayHours ?? randomDelayHours(options.random ?? Math.random);
   const delayMs = delayHours * HOUR_MS;
@@ -395,7 +389,7 @@ export async function continueConversation(
   const messages: LaylaChatMessage[] = [
     {
       role: "system",
-      content: buildDreamSystemPrompt(laylaCharacter),
+      content: buildDreamSystemPrompt(character),
     },
     ...recentHistory.map(toConversationMessage),
     elapsedMessage,
@@ -414,7 +408,7 @@ export async function continueConversation(
   const scheduledMessage = await layla.chat.scheduleChatMessage(
     {
       id: 0,
-      character_id: laylaCharacter.id,
+      character_id: character.laylaCharacter.id,
       session_id: sessionId,
       timestamp: scheduledAt,
       message: response,
