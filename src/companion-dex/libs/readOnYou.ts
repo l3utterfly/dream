@@ -1,6 +1,7 @@
 import { selectMomentsWorthKeeping } from "./selectMomentsWorthKeeping";
 import type { Character } from "../types";
 import type { LaylaChatMessage } from "@layla-network/sdk";
+import { humaniseDuration } from "../utils/misc";
 
 export type ReadOnYouStage = "occasionally chatting" | "frequently chatting" | "always chatting";
 
@@ -71,27 +72,6 @@ export function getStage(character: Character): ReadOnYouStage {
   if (messagesPerMs > 1 / WEEK_MS) return "occasionally chatting";
 
   return "occasionally chatting";
-}
-
-export function humaniseDuration(seconds: number): string {
-  try {
-    if (seconds < 60) {
-      return `${seconds.toFixed(0)}s`;
-    } else if (seconds < 3600) {
-      const minutes = Math.floor(seconds / 60);
-      return `${minutes.toFixed(0)} minutes`;
-    } else if (seconds < 86400) {
-      const hours = Math.floor(seconds / 3600);
-      return `${hours.toFixed(0)} hours`;
-    } else {
-      const days = Math.floor(seconds / 86400);
-      return `${days.toFixed(0)} days`;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to humanise duration";
-    console.warn(message + " - " + seconds.toString());
-    return seconds.toString();
-  }
 }
 
 export function getTimeTogether(character: Character) {
