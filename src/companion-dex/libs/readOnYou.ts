@@ -125,8 +125,11 @@ export function getWarmthAndDepth(character: Character) {
 }
 
 export function getPreviousImpression(character: Character) {
-    void character;
-    return 'No previous impression yet.';
+  const impression = character.laylaCharacter.data.data.extensions["impression"];
+
+  return typeof impression === "string" && impression.trim().length > 0
+    ? cleanPromptValue(impression)
+    : "No previous impression yet.";
 }
 
 export function getMemories(character: Character) {

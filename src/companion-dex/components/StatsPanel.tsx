@@ -22,6 +22,7 @@ import LaylaSDK, {
   LaylaBridgeUnavailableError,
   LaylaError,
   type ChatCompletionStream,
+  type LaylaCharacter,
 } from "@layla-network/sdk";
 import { eng, removeStopwords } from "stopword";
 import { selectMomentsWorthKeeping } from "../libs/selectMomentsWorthKeeping";
@@ -47,6 +48,14 @@ const PRIVATE_LANGUAGE_HEIGHT = 190;
 const PRIVATE_LANGUAGE_WORD_LIMIT = 34;
 const REFLECTION_SETTINGS_FILENAME = "settings.json";
 const REFLECTION_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const INITIAL_VITAL_MIN = 10;
+const INITIAL_VITAL_MAX = 30;
+const VITAL_SETTINGS_KEYS = {
+  energy: "energy",
+  fed: "hungriness",
+  social: "social",
+} as const satisfies Record<keyof Character["vitals"], string>;
 const EXTRA_PRIVATE_LANGUAGE_STOPWORDS = [
   "cant",
   "character",
@@ -124,8 +133,18 @@ interface CharacterReflectionSettings {
   recentMemory?: string;
 }
 
+interface CharacterVitalSettings {
+  value?: number;
+  lastTapped?: number;
+}
+
+type CharacterWellbeingSettings = Partial<
+  Record<(typeof VITAL_SETTINGS_KEYS)[keyof Character["vitals"]], CharacterVitalSettings>
+>;
+
 interface CharacterSettings {
   reflection?: CharacterReflectionSettings;
+  howYouAreDoing?: CharacterWellbeingSettings;
 }
 
 interface CompanionDexSettings {
@@ -231,6 +250,18 @@ async function saveReflectionSettings(settings: CompanionDexSettings) {
   }
 }
 
+let settingsSaveQueue = Promise.resolve();
+
+function queueSaveSettings(settings: CompanionDexSettings) {
+  const save = () => saveReflectionSettings(settings);
+  settingsSaveQueue = settingsSaveQueue.then(save, save);
+  return settingsSaveQueue;
+}
+
+function saveSettingsInBackground(settings: CompanionDexSettings) {
+  void queueSaveSettings(settings).catch(() => undefined);
+}
+
 function withCharacterReflectionSettings(
   settings: CompanionDexSettings,
   characterId: string,
@@ -255,6 +286,108 @@ function characterReflectionSettings(
   characterId: string,
 ) {
   return settings.characters?.[characterId]?.reflection;
+}
+
+function randomInitialVital() {
+  return (
+    INITIAL_VITAL_MIN +
+    Math.floor(Math.random() * (INITIAL_VITAL_MAX - INITIAL_VITAL_MIN + 1))
+  );
+}
+
+function validNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function decayVital(value: number, lastTapped: number, now = Date.now()) {
+  const elapsedDays = Math.max(0, now - lastTapped) / DAY_MS;
+  return value * Math.pow(0.5, elapsedDays);
+}
+
+function vitalSettingsKey(key: keyof Character["vitals"]) {
+  return VITAL_SETTINGS_KEYS[key];
+}
+
+function characterVitalSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+  key: keyof Character["vitals"],
+) {
+  return settings.characters?.[characterId]?.howYouAreDoing?.[
+    vitalSettingsKey(key)
+  ];
+}
+
+function characterVitalValue(
+  settings: CompanionDexSettings,
+  characterId: string,
+  key: keyof Character["vitals"],
+  now: number,
+) {
+  const vital = characterVitalSettings(settings, characterId, key);
+
+  if (!validNumber(vital?.value)) return 0;
+  if (!validNumber(vital.lastTapped)) return Math.max(0, vital.value);
+
+  return Math.max(0, decayVital(vital.value, vital.lastTapped, now));
+}
+
+function withCharacterVitalSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+  key: keyof Character["vitals"],
+  vital: CharacterVitalSettings,
+): CompanionDexSettings {
+  const characters = settings.characters ?? {};
+  const characterSettings = characters[characterId] ?? {};
+
+  return {
+    ...settings,
+    characters: {
+      ...characters,
+      [characterId]: {
+        ...characterSettings,
+        howYouAreDoing: {
+          ...characterSettings.howYouAreDoing,
+          [vitalSettingsKey(key)]: vital,
+        },
+      },
+    },
+  };
+}
+
+function ensureCharacterVitalSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+  now: number,
+) {
+  let nextSettings = settings;
+  let changed = false;
+  const keys = Object.keys(VITAL_SETTINGS_KEYS) as Array<keyof Character["vitals"]>;
+
+  for (const key of keys) {
+    const current = characterVitalSettings(nextSettings, characterId, key);
+
+    if (validNumber(current?.value)) {
+      if (!validNumber(current.lastTapped)) {
+        nextSettings = withCharacterVitalSettings(nextSettings, characterId, key, {
+          ...current,
+          lastTapped: now,
+        });
+        changed = true;
+      }
+
+      continue;
+    }
+
+    nextSettings = withCharacterVitalSettings(nextSettings, characterId, key, {
+      value: randomInitialVital(),
+      lastTapped: now,
+    });
+    changed = true;
+  }
+
+  return changed ? nextSettings : settings;
 }
 
 function reflectionGuardState(
@@ -659,16 +792,38 @@ interface StatsPanelProps {
   character: Character;
   theme: Theme;
   imageFailed: boolean;
+  onUpdateLaylaCharacter: (
+    characterId: string,
+    updater: (character: LaylaCharacter) => LaylaCharacter,
+  ) => Promise<LaylaCharacter>;
 }
 
-export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
+function withImpression(
+  character: LaylaCharacter,
+  impression: string,
+): LaylaCharacter {
+  return {
+    ...character,
+    data: {
+      ...character.data,
+      data: {
+        ...character.data.data,
+        extensions: {
+          ...character.data.data.extensions,
+          impression,
+        },
+      },
+    },
+  };
+}
+
+export function StatsPanel({
+  character,
+  theme,
+  imageFailed,
+  onUpdateLaylaCharacter,
+}: StatsPanelProps) {
   const [mounted, setMounted] = useState(false);
-  const [vitalTaps, setVitalTaps] = useState({
-    characterId: character.id,
-    energy: 0,
-    fed: 0,
-    social: 0,
-  });
 
   const [reflection, setReflection] = useState<ReflectionState>({
     characterId: character.id,
@@ -717,6 +872,25 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     return () => window.clearInterval(id);
   }, []);
   useEffect(() => {
+    if (settingsState.status !== "ready") return;
+
+    const initializedAt = Date.now();
+    const nextSettings = ensureCharacterVitalSettings(
+      settingsRef.current,
+      character.id,
+      initializedAt,
+    );
+
+    if (nextSettings === settingsRef.current) return;
+
+    settingsRef.current = nextSettings;
+    setSettingsState({
+      status: "ready",
+      settings: nextSettings,
+    });
+    saveSettingsInBackground(nextSettings);
+  }, [character.id, settingsState.status, settingsState.settings]);
+  useEffect(() => {
     reflectionStreamRef.current?.abort();
     reflectionStreamRef.current = null;
     setReflection({
@@ -731,21 +905,30 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
     };
   }, [character.id]);
 
-  const activeVitalTaps =
-    vitalTaps.characterId === character.id
-      ? vitalTaps
-      : { characterId: character.id, energy: 0, fed: 0, social: 0 };
   const v = (n: number) => (mounted ? n : 0);
   const vitalValue = (key: keyof Character["vitals"]) =>
-    v(character.vitals[key] + activeVitalTaps[key]);
+    v(characterVitalValue(settingsState.settings, character.id, key, now));
   const tapVital = (key: keyof Character["vitals"]) => {
-    setVitalTaps((current) => {
-      const nextTaps =
-        current.characterId === character.id
-          ? current
-          : { characterId: character.id, energy: 0, fed: 0, social: 0 };
-      return { ...nextTaps, [key]: nextTaps[key] + 1 };
+    const tappedAt = Date.now();
+    const nextValue =
+      characterVitalValue(settingsRef.current, character.id, key, tappedAt) + 1;
+    const nextSettings = withCharacterVitalSettings(
+      settingsRef.current,
+      character.id,
+      key,
+      {
+        value: nextValue,
+        lastTapped: tappedAt,
+      },
+    );
+
+    settingsRef.current = nextSettings;
+    setNow(tappedAt);
+    setSettingsState({
+      status: "ready",
+      settings: nextSettings,
     });
+    saveSettingsInBackground(nextSettings);
   };
   const reflectionPromptValues = useMemo(
     () => buildReadOnYouPromptValues(character),
@@ -783,6 +966,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
       });
 
       const finalText = await stream.finalContent();
+      const finalImpression = finalText.trim();
       setReflection((current) =>
         current.characterId === character.id
           ? {
@@ -792,6 +976,10 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
               error: undefined,
             }
           : current,
+      );
+
+      await onUpdateLaylaCharacter(character.id, (laylaCharacter) =>
+        withImpression(laylaCharacter, finalImpression),
       );
 
       const nextSettings = withCharacterReflectionSettings(
@@ -804,7 +992,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
         },
       );
 
-      await saveReflectionSettings(nextSettings);
+      await queueSaveSettings(nextSettings);
       settingsRef.current = nextSettings;
       setSettingsState({
         status: "ready",
@@ -827,7 +1015,7 @@ export function StatsPanel({ character, theme, imageFailed }: StatsPanelProps) {
         reflectionStreamRef.current = null;
       }
     }
-  }, [character, reflectionPromptValues]);
+  }, [character, onUpdateLaylaCharacter, reflectionPromptValues]);
 
   const trend = character.bond?.trend;
   const trendTimespan = trend

@@ -29,6 +29,13 @@ function imageFromCharacterCard(character: LaylaCharacter) {
   return typeof image === "string" && image.length > 0 ? image : null;
 }
 
+function impressionFromCharacterCard(character: LaylaCharacter) {
+  const impression = character.data.data.extensions["impression"];
+  return typeof impression === "string" && impression.trim().length > 0
+    ? impression.trim()
+    : null;
+}
+
 function cleanSentence(value: string | undefined, fallback: string) {
   const sentence = value?.trim().replace(/\s+/g, " ");
   return sentence && sentence.length > 0 ? sentence : fallback;
@@ -271,10 +278,12 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
   const personality = cleanSentence(data.personality, "open, attentive");
   const greeting = cleanSentence(data.first_mes, `Hi, I'm ${name}.`);
   const scenario = cleanSentence(data.scenario, "You are getting to know each other through Layla.");
+  const impression = impressionFromCharacterCard(character);
 
   return {
     ...profile,
     id: character.id,
+    laylaCharacter: character,
     name,
     image: cardImage ?? image ?? undefined,
     mainMood: "reading latest message",
@@ -312,7 +321,28 @@ function toCompanion(character: LaylaCharacter, index: number, image: string | n
           ? "quiet hours"
           : "whenever you return",
     theirRead: "is still forming an impression from your first conversations.",
-    impression: `${name}'s card suggests ${shortText(description, 96)}`,
+    impression: impression ?? `${name}'s card suggests ${shortText(description, 96)}`,
+  };
+}
+
+function updateCompanionFromLaylaCharacter(
+  companion: Character,
+  character: LaylaCharacter,
+): Character {
+  const data = character.data.data;
+  const name = data.name?.trim() || companion.name;
+  const cardImage = imageFromCharacterCard(character);
+  const description = cleanSentence(data.description, `${name} is ready to chat.`);
+
+  return {
+    ...companion,
+    id: character.id,
+    laylaCharacter: character,
+    name,
+    image: cardImage ?? companion.image,
+    impression:
+      impressionFromCharacterCard(character) ??
+      `${name}'s card suggests ${shortText(description, 96)}`,
   };
 }
 
@@ -333,6 +363,7 @@ export function useLaylaCompanions() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const companionsRef = useRef<Character[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const imageAbortControllersRef = useRef<Set<AbortController>>(new Set());
   const chatHistoryAbortControllersRef = useRef<Set<AbortController>>(new Set());
@@ -340,6 +371,10 @@ export function useLaylaCompanions() {
   const isLoadingRef = useRef(false);
   const hasMoreRef = useRef(true);
   const offsetRef = useRef(0);
+
+  useEffect(() => {
+    companionsRef.current = companions;
+  }, [companions]);
 
   const hydrateImages = useCallback((characters: LaylaCharacter[]) => {
     characters.forEach((character) => {
@@ -652,6 +687,42 @@ export function useLaylaCompanions() {
     }
   }, [hydrateChatHistories, hydrateImages, hydrateMemories]);
 
+  const updateCompanionLaylaCharacter = useCallback(
+    async (
+      characterId: string,
+      updater: (character: LaylaCharacter) => LaylaCharacter,
+    ) => {
+      const companion = companionsRef.current.find(
+        (current) => current.id === characterId,
+      );
+
+      if (!companion) {
+        throw new Error("Character is no longer available.");
+      }
+
+      const nextLaylaCharacter = updater(companion.laylaCharacter);
+      const updatedId = await layla.characters.update(nextLaylaCharacter);
+      const savedLaylaCharacter = {
+        ...nextLaylaCharacter,
+        id: updatedId,
+      };
+
+      setCompanions((current) =>
+        current.map((currentCompanion) =>
+          currentCompanion.id === characterId
+            ? updateCompanionFromLaylaCharacter(
+                currentCompanion,
+                savedLaylaCharacter,
+              )
+            : currentCompanion,
+        ),
+      );
+
+      return savedLaylaCharacter;
+    },
+    [],
+  );
+
   useEffect(() => {
     void loadMore();
     const imageAbortControllers = imageAbortControllersRef.current;
@@ -675,5 +746,6 @@ export function useLaylaCompanions() {
     hasMore,
     isLoading,
     loadMore,
+    updateCompanionLaylaCharacter,
   };
 }

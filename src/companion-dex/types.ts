@@ -1,4 +1,8 @@
-import type { LaylaChatHistoryEntry, LaylaMemory } from "@layla-network/sdk";
+import type {
+  LaylaCharacter,
+  LaylaChatHistoryEntry,
+  LaylaMemory,
+} from "@layla-network/sdk";
 import type { BondResult, ScoredText } from "./libs/computeBond";
 
 export type Mood = "happy" | "content" | "excited" | "sad" | "lonely" | "sleepy";
@@ -31,6 +35,7 @@ export interface MemorySentimentData {
 
 export interface Character {
   id: string;
+  laylaCharacter: LaylaCharacter;
   name: string;
   type: string;
   shape: Shape;

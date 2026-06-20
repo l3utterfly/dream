@@ -33,7 +33,14 @@ export default function CompanionDex() {
   const [active, setActive] = useState(0);
   const [derivedThemes, setDerivedThemes] = useState<Record<string, Theme>>({});
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
-  const { companions: laylaCompanions, error, hasMore, isLoading, loadMore } = useLaylaCompanions();
+  const {
+    companions: laylaCompanions,
+    error,
+    hasMore,
+    isLoading,
+    loadMore,
+    updateCompanionLaylaCharacter,
+  } = useLaylaCompanions();
   const backgroundRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
   const paletteRequestsRef = useRef<Set<string>>(new Set());
@@ -195,7 +202,12 @@ export default function CompanionDex() {
           {error ? (
             <div style={{ padding: "0 24px 18px", color: "var(--ink-1)", fontSize: 13, textAlign: "center" }}>{error}</div>
           ) : null}
-          <StatsPanel character={character} theme={theme} imageFailed={imageFailed} />
+          <StatsPanel
+            character={character}
+            theme={theme}
+            imageFailed={imageFailed}
+            onUpdateLaylaCharacter={updateCompanionLaylaCharacter}
+          />
         </div>
       </div>
     </div>
