@@ -2,6 +2,7 @@ import {
   makeMockCharacter,
   type LaylaCharacter,
   type LaylaMemory,
+  type LaylaPersona,
   type LaylaScheduledChatMessage,
   type TavernCardV2,
 } from "@layla-network/sdk";
@@ -114,6 +115,16 @@ function makeCharacter(seed: MockCharacterSeed): LaylaCharacter {
 }
 
 export const MOCK_LAYLA_CHARACTERS = seeds.map(makeCharacter);
+
+export const MOCK_LAYLA_PERSONAS: Record<string, LaylaPersona> = Object.fromEntries(
+  seeds.map((seed) => [
+    seed.id,
+    {
+      name: "User",
+      description: `${seed.name} knows you as someone who notices emotional nuance, values grounded warmth, and prefers care that feels specific to the moment.`,
+    },
+  ]),
+);
 
 export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex) => {
   const timestamp = Date.now() - seedIndex * 60 * 60 * 1000;

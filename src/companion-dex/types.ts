@@ -2,6 +2,7 @@ import type {
   LaylaCharacter,
   LaylaChatHistoryEntry,
   LaylaMemory,
+  LaylaPersona,
 } from "@layla-network/sdk";
 import type { BondResult, ScoredText } from "./libs/computeBond";
 
@@ -36,6 +37,7 @@ export interface MemorySentimentData {
 export interface Character {
   id: string;
   laylaCharacter: LaylaCharacter;
+  persona?: LaylaPersona;
   name: string;
   type: string;
   shape: Shape;
@@ -71,6 +73,8 @@ export interface Character {
   recentMemories: LaylaMemory[];
   isMemoriesLoading: boolean;
   memoriesError?: string;
+  isPersonaLoading: boolean;
+  personaError?: string;
   memorySentiment?: MemorySentimentData;
   memorySentimentPromise?: Promise<MemorySentimentData>;
   isMemorySentimentLoading: boolean;

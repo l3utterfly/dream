@@ -6,6 +6,7 @@ import { installLaylaMock } from "@layla-network/sdk";
 import {
   MOCK_LAYLA_CHARACTERS,
   MOCK_LAYLA_MEMORIES,
+  MOCK_LAYLA_PERSONAS,
   MOCK_LAYLA_SCHEDULED_CHAT_MESSAGES,
 } from "./mockLaylaCharacters";
 import { createOpenAIChatMockSource } from "./openaiChatMockSource";
@@ -14,6 +15,7 @@ if (import.meta.env.DEV) {
   installLaylaMock({
     characters: MOCK_LAYLA_CHARACTERS,
     memories: MOCK_LAYLA_MEMORIES,
+    personas: MOCK_LAYLA_PERSONAS,
     scheduledChatMessages: MOCK_LAYLA_SCHEDULED_CHAT_MESSAGES,
     respond: createOpenAIChatMockSource({
       endpoint: import.meta.env.VITE_LAYLA_OPENAI_MOCK_ENDPOINT,

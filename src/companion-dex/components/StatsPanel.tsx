@@ -276,6 +276,7 @@ export function StatsPanel({
     !!character.chatSentiment &&
     !character.isMemoriesLoading &&
     !character.memoriesError &&
+    !character.isPersonaLoading &&
     !character.isMemorySentimentLoading &&
     !character.memorySentimentError &&
     character.recentMemories.length > 0;

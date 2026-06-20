@@ -8,6 +8,7 @@ export type ReadOnYouStage = "occasionally chatting" | "frequently chatting" | "
 export interface ReadOnYouPromptValues extends Record<string, string> {
   user: string;
   char: string;
+  persona: string;
   description: string;
   personality: string;
   stage: ReadOnYouStage;
@@ -31,9 +32,11 @@ function timestampMs(timestamp: number) {
 }
 
 export function getUserName(character: Character) {
-    // find the first chat history where character_id == 'user'
-    const userEntry = character.chatHistory.find((entry) => entry.character_id === "user");
-    return userEntry?.name ?? "User";
+  const personaName = cleanPromptValue(character.persona?.name);
+  if (personaName) return personaName;
+
+  const userEntry = character.chatHistory.find((entry) => entry.character_id === "user");
+  return userEntry?.name ?? "User";
 }
 
 export function getCharacterName(character: Character) {
@@ -52,6 +55,20 @@ export function getCharacterPersonality(character: Character) {
   const cardPersonality = character.remembers.find((memory) => !memory.fresh)?.fact;
 
   return cleanPromptValue(cardPersonality ?? "No personality description available");
+}
+
+export function getPersona(character: Character) {
+  const personaName = cleanPromptValue(character.persona?.name);
+  const personaDescription = cleanPromptValue(character.persona?.description);
+
+  if (personaName && personaDescription) {
+    return `Name: ${personaName}\nDescription: ${personaDescription}`;
+  }
+
+  if (personaDescription) return personaDescription;
+  if (personaName) return `Name: ${personaName}`;
+
+  return "No persona information available yet.";
 }
 
 export function getStage(character: Character): ReadOnYouStage {
@@ -154,6 +171,9 @@ export function getRecentMemory(character: Character) {
 
 export const SYSTEM_PROMPT = `You are to write an impression of {{user}} from {{char}}'s point of view.
 
+WHAT YOU KNOW ABOUT {{user}}
+{{persona}}
+
 VOICE
 - Inhabit {{char}}'s personality and register (given below). It must sound like {{char}}, not a neutral assistant.
 
@@ -204,6 +224,7 @@ export function buildReadOnYouPromptValues(character: Character): ReadOnYouPromp
   return {
     user: getUserName(character),
     char: getCharacterName(character),
+    persona: getPersona(character),
     description: getCharacterDescription(character),
     personality: getCharacterPersonality(character),
     stage: getStage(character),
