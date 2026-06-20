@@ -6,6 +6,7 @@ import LaylaSDK, {
 } from "@layla-network/sdk";
 import type { Character } from "../types";
 import { humaniseDuration } from "../utils/misc";
+import { getEmotions } from "./readOnYou";
 
 const MIN_DREAM_DELAY_HOURS = 5;
 const MAX_DREAM_DELAY_HOURS = 100;
@@ -81,7 +82,8 @@ Reply with only the message {{char}} should send. Do not include labels, narrati
 {{persona}}
 
 CHARACTER CARD
-{{character_card}}`;
+{{character_card}}
+Current emotions: {{emotions}}`;
 
 export const OUT_OF_BLUE_SYSTEM_PROMPT = `You are {{char}}.
 
@@ -96,6 +98,8 @@ export const OUT_OF_BLUE_USER_INSTRUCTION = `MOMENTS WORTH KEEPING
 
 CURRENT IMPRESSION OF {{user}}
 {{impression}}
+
+{{char}}'s current emotions: {{emotions}}
 
 Write a message {{char}} sends to {{user}} out of the blue. It should feel natural, specific to what {{char}} knows, and like something {{char}} chose to send. Reply only with the message.`;
 
@@ -143,24 +147,28 @@ function characterPromptDetails(character: LaylaCharacter) {
 export function buildDreamSystemPromptValues(character: Character): DreamSystemPromptValues {
   const name = cleanPromptValue(character.name) || "the character";
   const details = characterPromptDetails(character.laylaCharacter);
+  const emotions = getEmotions(character);
 
   return {
     char: name,
     character_card: details || `Name: ${name}`,
     user: character.persona?.name ? cleanPromptValue(character.persona.name) : "user",
     persona: character.persona?.description ? cleanPromptValue(character.persona.description) : "",
+    emotions,
   };
 }
 
 export function buildOutOfBlueSystemPromptValues(
-  character: LaylaCharacter,
+  character: Character,
 ): OutOfBlueSystemPromptValues {
-  const name = cleanPromptValue(character.data.data.name) || "the character";
-  const details = characterPromptDetails(character);
+  const name = cleanPromptValue(character.laylaCharacter.data.data.name) || "the character";
+  const details = characterPromptDetails(character.laylaCharacter);
+  const emotions = getEmotions(character);
 
   return {
     char: name,
     character_card: details || `Name: ${name}`,
+    emotions,
   };
 }
 
@@ -197,7 +205,7 @@ export function buildDreamSystemPrompt(
 }
 
 export function buildOutOfBlueSystemPrompt(
-  character: LaylaCharacter,
+  character: Character,
   values = buildOutOfBlueSystemPromptValues(character),
 ) {
   return renderPromptTemplate(OUT_OF_BLUE_SYSTEM_PROMPT, values);
@@ -442,7 +450,7 @@ export async function scheduleOutOfBlueMessage(
   const messages: LaylaChatMessage[] = [
     {
       role: "system",
-      content: buildOutOfBlueSystemPrompt(laylaCharacter),
+      content: buildOutOfBlueSystemPrompt(character),
     },
     {
       role: "user",
