@@ -160,20 +160,21 @@ export const MOCK_LAYLA_MEMORIES: LaylaMemory[] = seeds.flatMap((seed, seedIndex
   ];
 });
 
-export const MOCK_LAYLA_SCHEDULED_CHAT_MESSAGES: LaylaScheduledChatMessage[] =
-  seeds.slice(0, 3).flatMap((seed, seedIndex) => [
-    {
-      id: seedIndex * 2 + 1,
-      character_id: seed.id,
-      session_id: `${seed.id}-first`,
-      timestamp: Date.now() + (seedIndex + 1) * 60 * 60 * 1000,
-      message: `Check in with you about what ${seed.name} noticed in your last conversation.`,
-    },
-    {
-      id: seedIndex * 2 + 2,
-      character_id: seed.id,
-      session_id: null,
-      timestamp: Date.now() + (seedIndex + 1) * 3 * 60 * 60 * 1000,
-      message: `Send a gentle note from ${seed.name} later today.`,
-    },
-  ]);
+export const MOCK_LAYLA_SCHEDULED_CHAT_MESSAGES: LaylaScheduledChatMessage[] = [];
+
+seeds.slice(0, 3).flatMap((seed, seedIndex) => [
+  {
+    id: seedIndex * 2 + 1,
+    character_id: seed.id,
+    session_id: `${seed.id}-first`,
+    timestamp: Date.now() + (seedIndex + 1) * 60 * 60 * 1000,
+    message: `Check in with you about what ${seed.name} noticed in your last conversation.`,
+  },
+  {
+    id: seedIndex * 2 + 2,
+    character_id: seed.id,
+    session_id: null,
+    timestamp: Date.now() + (seedIndex + 1) * 3 * 60 * 60 * 1000,
+    message: `Send a gentle note from ${seed.name} later today.`,
+  },
+]);
