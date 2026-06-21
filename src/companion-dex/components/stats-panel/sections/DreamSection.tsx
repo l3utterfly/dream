@@ -92,6 +92,21 @@ function scheduledMessagesForCharacter(
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
+function appendScheduledMessage(
+  scheduledMessages: LaylaScheduledChatMessage[],
+  scheduledMessage: LaylaScheduledChatMessage,
+  characterId: string,
+) {
+  const nextMessages = scheduledMessages.filter(
+    (message) => message.id !== scheduledMessage.id,
+  );
+
+  return scheduledMessagesForCharacter(
+    [...nextMessages, scheduledMessage],
+    characterId,
+  );
+}
+
 export function DreamSection({
   character,
   canReflectBeforeDream,
@@ -112,36 +127,6 @@ export function DreamSection({
     characterId: character.id,
     status: "idle",
   });
-
-  const refreshScheduledMessages = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const scheduledMessages = await layla.chat.getScheduledChatMessages({
-          signal,
-        });
-        const messages = scheduledMessagesForCharacter(
-          scheduledMessages,
-          character.id,
-        );
-
-        setScheduledMessagesState({
-          characterId: character.id,
-          status: "ready",
-          messages,
-        });
-      } catch (error) {
-        if (error instanceof LaylaAbortError) return;
-
-        setScheduledMessagesState({
-          characterId: character.id,
-          status: "error",
-          messages: [],
-          error: scheduledMessagesErrorMessage(error),
-        });
-      }
-    },
-    [character.id],
-  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -262,27 +247,30 @@ export function DreamSection({
         character.id,
       );
 
-      if (selectedDream.kind === "continue") {
-        await continueConversation(selectedDream.messages, character, {
-          layla,
-          signal: controller.signal,
-        });
-      } else {
-        await scheduleOutOfBlueMessage(character, {
-          layla,
-          signal: controller.signal,
-        });
-      }
+      const dreamResult =
+        selectedDream.kind === "continue"
+          ? await continueConversation(selectedDream.messages, character, {
+              layla,
+              signal: controller.signal,
+            })
+          : await scheduleOutOfBlueMessage(character, {
+              layla,
+              signal: controller.signal,
+            });
+
+      setScheduledMessagesState({
+        characterId: character.id,
+        status: "ready",
+        messages: appendScheduledMessage(
+          scheduledMessages,
+          dreamResult.scheduledMessage,
+          character.id,
+        ),
+      });
       setDreamState({
         characterId: character.id,
         status: "done",
       });
-      setScheduledMessagesState({
-        characterId: character.id,
-        status: "loading",
-        messages: [],
-      });
-      await refreshScheduledMessages(controller.signal);
     } catch (error) {
       if (error instanceof LaylaAbortError) return;
 
@@ -301,7 +289,6 @@ export function DreamSection({
     character,
     onSettingsChange,
     onUpdateLaylaCharacter,
-    refreshScheduledMessages,
     reflectionPromptValues,
     scheduledMessages,
     settingsState,
