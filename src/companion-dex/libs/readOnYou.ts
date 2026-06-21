@@ -20,6 +20,11 @@ export interface ReadOnYouPromptValues extends Record<string, string> {
   recent_memory: string;
 }
 
+export interface ReadOnYouPromptTemplates {
+  systemPrompt?: string;
+  userInstruction?: string;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 
@@ -240,15 +245,19 @@ export function buildReadOnYouPromptValues(character: Character): ReadOnYouPromp
 export function buildReadOnYouMessages(
   character: Character,
   values = buildReadOnYouPromptValues(character),
+  templates: ReadOnYouPromptTemplates = {},
 ): LaylaChatMessage[] {
   return [
     {
       role: "system",
-      content: renderPromptTemplate(SYSTEM_PROMPT, values),
+      content: renderPromptTemplate(templates.systemPrompt ?? SYSTEM_PROMPT, values),
     },
     {
       role: "user",
-      content: renderPromptTemplate(USER_INSTRUCTION, values),
+      content: renderPromptTemplate(
+        templates.userInstruction ?? USER_INSTRUCTION,
+        values,
+      ),
     },
   ];
 }

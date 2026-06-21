@@ -5,20 +5,30 @@ import {
   LaylaError,
   type LaylaScheduledChatMessage,
 } from "@layla-network/sdk";
-import { Clock, MoonStar, Sparkles } from "lucide-react";
+import { Clock, MoonStar, RotateCcw, Settings, Sparkles } from "lucide-react";
 import {
   continueConversation,
+  DREAM_SYSTEM_PROMPT,
   dreamSelectionCandidates,
+  OUT_OF_BLUE_SYSTEM_PROMPT,
   scheduleOutOfBlueMessage,
   selectRandomDreamCandidate,
 } from "../../../libs/dream";
+import {
+  SYSTEM_PROMPT as READ_ON_YOU_SYSTEM_PROMPT,
+  USER_INSTRUCTION as READ_ON_YOU_USER_INSTRUCTION,
+} from "../../../libs/readOnYou";
 import { runReflection, type ReadOnYouPromptValues } from "../../../libs/reflect";
 import type { Character } from "../../../types";
 import { layla } from "../laylaClient";
 import {
+  characterDreamPromptSettings,
   queueSaveSettings,
+  saveSettingsInBackground,
   type CompanionDexSettings,
+  type DreamPromptSettings,
   type SettingsState,
+  withCharacterDreamPromptSettings,
 } from "../settings";
 import { Block } from "../../MetricSections";
 
@@ -42,6 +52,76 @@ interface DreamState {
   characterId: string;
   status: "idle" | "loading" | "done" | "error";
   error?: string;
+}
+
+type DreamPromptSettingKey = keyof DreamPromptSettings;
+
+const DEFAULT_DREAM_PROMPTS: Required<DreamPromptSettings> = {
+  dreamSystemPrompt: DREAM_SYSTEM_PROMPT,
+  outOfBlueSystemPrompt: OUT_OF_BLUE_SYSTEM_PROMPT,
+  readOnYouSystemPrompt: READ_ON_YOU_SYSTEM_PROMPT,
+  readOnYouUserInstruction: READ_ON_YOU_USER_INSTRUCTION,
+};
+
+const DREAM_PROMPT_FIELDS: Array<{
+  key: DreamPromptSettingKey;
+  label: string;
+  rows: number;
+}> = [
+  {
+    key: "dreamSystemPrompt",
+    label: "DREAM_SYSTEM_PROMPT",
+    rows: 10,
+  },
+  {
+    key: "outOfBlueSystemPrompt",
+    label: "OUT_OF_BLUE_SYSTEM_PROMPT",
+    rows: 7,
+  },
+  {
+    key: "readOnYouSystemPrompt",
+    label: "SYSTEM_PROMPT in readOnYou.ts",
+    rows: 11,
+  },
+  {
+    key: "readOnYouUserInstruction",
+    label: "USER_INSTRUCTION in readOnYou.ts",
+    rows: 12,
+  },
+];
+
+const DREAM_TEMPLATE_ROWS = [
+  ["{{char}}", "Character's name."],
+  ["{{user}}", "Your name."],
+  ["{{persona}}", "Your persona attached to this character."],
+  ["{{character_card}}", "Full character details including description, personality, prompt, etc."],
+  ["{{description}}", "A compact character description."],
+  ["{{personality}}", "A compact personality for the character."],
+  ["{{stage}}", "How established the relationship currently appears."],
+  ["{{time_together}}", "How long you have been chatting with this character."],
+  ["{{warmth_and_depth}}", "A short summary of warmth/depth signals in the relationship."],
+  ["{{previous_impression}}", "The last saved impression of the user, if one exists."],
+  ["{{memories}}", "Selected moments worth keeping from chat and memory sentiment."],
+  ["{{emotions}}", "The character's current energy, hunger, and social state."],
+  ["{{recent_memory}}", "The most recent conversation thread summary."],
+] as const;
+
+function promptDraftsFromSettings(
+  dreamPrompts: DreamPromptSettings | undefined,
+): Required<DreamPromptSettings> {
+  return {
+    dreamSystemPrompt:
+      dreamPrompts?.dreamSystemPrompt ?? DEFAULT_DREAM_PROMPTS.dreamSystemPrompt,
+    outOfBlueSystemPrompt:
+      dreamPrompts?.outOfBlueSystemPrompt ??
+      DEFAULT_DREAM_PROMPTS.outOfBlueSystemPrompt,
+    readOnYouSystemPrompt:
+      dreamPrompts?.readOnYouSystemPrompt ??
+      DEFAULT_DREAM_PROMPTS.readOnYouSystemPrompt,
+    readOnYouUserInstruction:
+      dreamPrompts?.readOnYouUserInstruction ??
+      DEFAULT_DREAM_PROMPTS.readOnYouUserInstruction,
+  };
 }
 
 function scheduledMessagesErrorMessage(error: unknown) {
@@ -127,6 +207,7 @@ export function DreamSection({
     characterId: character.id,
     status: "idle",
   });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -216,6 +297,50 @@ export function DreamSection({
     dreamTitle = "No unscheduled conversation sessions";
   }
   const spoilerKey = scheduledMessages.map((message) => message.id).join("-");
+  const settingsUnavailableMessage =
+    settingsState.status === "loading"
+      ? "Loading prompt settings..."
+      : settingsState.status === "error"
+        ? (settingsState.error ?? "Prompt settings unavailable.")
+        : null;
+  const promptDrafts = useMemo(
+    () =>
+      promptDraftsFromSettings(
+        characterDreamPromptSettings(settingsState.settings, character.id),
+      ),
+    [character.id, settingsState.settings],
+  );
+
+  const updatePromptDraft = useCallback(
+    (key: DreamPromptSettingKey, value: string) => {
+      if (settingsState.status !== "ready") return;
+
+      const nextSettings = withCharacterDreamPromptSettings(
+        settingsState.settings,
+        character.id,
+        {
+          ...characterDreamPromptSettings(settingsState.settings, character.id),
+          [key]: value,
+        },
+      );
+
+      onSettingsChange(nextSettings);
+      saveSettingsInBackground(nextSettings);
+    },
+    [character.id, onSettingsChange, settingsState],
+  );
+
+  const resetPromptDrafts = useCallback(() => {
+    if (settingsState.status !== "ready") return;
+
+    const nextSettings = withCharacterDreamPromptSettings(
+      settingsState.settings,
+      character.id,
+      {},
+    );
+    onSettingsChange(nextSettings);
+    saveSettingsInBackground(nextSettings);
+  }, [character.id, onSettingsChange, settingsState]);
 
   const handleDream = useCallback(async () => {
     dreamControllerRef.current?.abort();
@@ -233,6 +358,10 @@ export function DreamSection({
           layla,
           settings: settingsState.settings,
           promptValues: reflectionPromptValues,
+          promptTemplates: {
+            systemPrompt: promptDrafts.readOnYouSystemPrompt,
+            userInstruction: promptDrafts.readOnYouUserInstruction,
+          },
           signal: controller.signal,
           onUpdateLaylaCharacter,
           saveSettings: queueSaveSettings,
@@ -252,10 +381,12 @@ export function DreamSection({
           ? await continueConversation(selectedDream.messages, character, {
               layla,
               signal: controller.signal,
+              dreamSystemPrompt: promptDrafts.dreamSystemPrompt,
             })
           : await scheduleOutOfBlueMessage(character, {
               layla,
               signal: controller.signal,
+              outOfBlueSystemPrompt: promptDrafts.outOfBlueSystemPrompt,
             });
 
       setScheduledMessagesState({
@@ -289,14 +420,89 @@ export function DreamSection({
     character,
     onSettingsChange,
     onUpdateLaylaCharacter,
+    promptDrafts,
     reflectionPromptValues,
     scheduledMessages,
     settingsState,
   ]);
 
   return (
-    <Block icon={<MoonStar size={15} />} title="Dream">
+    <Block
+      icon={<MoonStar size={15} />}
+      title="Dream"
+      action={
+        <button
+          type="button"
+          className="cd-dream-settings-toggle"
+          aria-label="Dream settings"
+          aria-expanded={isSettingsOpen}
+          title="Dream settings"
+          onClick={() => setIsSettingsOpen((open) => !open)}
+        >
+          <Settings size={16} />
+        </button>
+      }
+    >
       <div className="cd-dream-card cd-fade">
+        {isSettingsOpen ? (
+          <section className="cd-dream-settings-panel" aria-label="Dream settings">
+            <div className="cd-dream-settings-actions">
+              {settingsUnavailableMessage ? (
+                <p>{settingsUnavailableMessage}</p>
+              ) : (
+                <p>Prompt settings save automatically.</p>
+              )}
+              <button
+                type="button"
+                className="cd-dream-reset-button"
+                disabled={settingsState.status !== "ready"}
+                onClick={resetPromptDrafts}
+              >
+                <RotateCcw size={14} />
+                <span>Reset</span>
+              </button>
+            </div>
+            <div className="cd-dream-prompt-grid">
+              {DREAM_PROMPT_FIELDS.map((field) => (
+                <label key={field.key} className="cd-dream-prompt-field">
+                  <span>{field.label}</span>
+                  <textarea
+                    value={promptDrafts[field.key]}
+                    rows={field.rows}
+                    spellCheck={false}
+                    disabled={settingsState.status !== "ready"}
+                    onChange={(event) =>
+                      updatePromptDraft(field.key, event.currentTarget.value)
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+            <details className="cd-dream-template-spoiler">
+              <summary>Templates</summary>
+              <div className="cd-dream-template-table-wrap">
+                <table className="cd-dream-template-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Template</th>
+                      <th scope="col">Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DREAM_TEMPLATE_ROWS.map(([template, description]) => (
+                      <tr key={template}>
+                        <td>
+                          <code>{template}</code>
+                        </td>
+                        <td>{description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+        ) : null}
         <button
           type="button"
           className="cd-dream-button"

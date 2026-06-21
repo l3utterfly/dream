@@ -27,9 +27,17 @@ type CharacterWellbeingSettings = Partial<
   Record<(typeof VITAL_SETTINGS_KEYS)[keyof Character["vitals"]], CharacterVitalSettings>
 >;
 
+export interface DreamPromptSettings {
+  dreamSystemPrompt?: string;
+  outOfBlueSystemPrompt?: string;
+  readOnYouSystemPrompt?: string;
+  readOnYouUserInstruction?: string;
+}
+
 interface CharacterSettings {
   reflection?: CharacterReflectionSettings;
   howYouAreDoing?: CharacterWellbeingSettings;
+  dreamPrompts?: DreamPromptSettings;
 }
 
 export interface CompanionDexSettings {
@@ -71,9 +79,14 @@ function parseSettings(value: string): CompanionDexSettings {
   if (!parsed || typeof parsed !== "object") return {};
 
   const settings = parsed as CompanionDexSettings;
-  return settings.characters && typeof settings.characters === "object"
-    ? settings
-    : {};
+  const characters =
+    settings.characters && typeof settings.characters === "object"
+      ? settings.characters
+      : undefined;
+
+  return {
+    ...(characters ? { characters } : {}),
+  };
 }
 
 export function settingsErrorMessage(error: unknown) {
@@ -125,6 +138,33 @@ export function queueSaveSettings(settings: CompanionDexSettings) {
 
 export function saveSettingsInBackground(settings: CompanionDexSettings) {
   void queueSaveSettings(settings).catch(() => undefined);
+}
+
+export function withCharacterDreamPromptSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+  dreamPrompts: DreamPromptSettings,
+): CompanionDexSettings {
+  const characters = settings.characters ?? {};
+  const characterSettings = characters[characterId] ?? {};
+
+  return {
+    ...settings,
+    characters: {
+      ...characters,
+      [characterId]: {
+        ...characterSettings,
+        dreamPrompts,
+      },
+    },
+  };
+}
+
+export function characterDreamPromptSettings(
+  settings: CompanionDexSettings,
+  characterId: string,
+) {
+  return settings.characters?.[characterId]?.dreamPrompts;
 }
 
 export function withCharacterReflectionSettings(

@@ -7,6 +7,7 @@ import LaylaSDK, {
 import {
   buildReadOnYouMessages,
   buildReadOnYouPromptValues,
+  type ReadOnYouPromptTemplates,
   type ReadOnYouPromptValues,
 } from "./readOnYou";
 import type { Character } from "../types";
@@ -36,6 +37,7 @@ export interface RunReflectionOptions {
   promptValues?: ReadOnYouPromptValues;
   signal?: AbortSignal;
   now?: () => number;
+  promptTemplates?: ReadOnYouPromptTemplates;
   onStream?: (stream: ChatCompletionStream) => void;
   onContent?: (snapshot: string, delta: string) => void;
   onUpdateLaylaCharacter: (
@@ -221,7 +223,11 @@ export async function runReflection(
   const promptValues =
     options.promptValues ?? buildReadOnYouPromptValues(character);
   const stream = layla.chat.completions.stream({
-    messages: buildReadOnYouMessages(character, promptValues),
+    messages: buildReadOnYouMessages(
+      character,
+      promptValues,
+      options.promptTemplates,
+    ),
     signal: options.signal,
   });
 

@@ -20,6 +20,8 @@ export interface ContinueConversationOptions {
   random?: () => number;
   delayHours?: number;
   signal?: AbortSignal;
+  dreamSystemPrompt?: string;
+  outOfBlueSystemPrompt?: string;
 }
 
 export interface ContinueConversationResult {
@@ -200,15 +202,17 @@ export function buildOutOfBlueUserPromptValues(character: Character): OutOfBlueU
 export function buildDreamSystemPrompt(
   character: Character,
   values = buildDreamSystemPromptValues(character),
+  template = DREAM_SYSTEM_PROMPT,
 ) {
-  return renderPromptTemplate(DREAM_SYSTEM_PROMPT, values);
+  return renderPromptTemplate(template, values);
 }
 
 export function buildOutOfBlueSystemPrompt(
   character: Character,
   values = buildOutOfBlueSystemPromptValues(character),
+  template = OUT_OF_BLUE_SYSTEM_PROMPT,
 ) {
-  return renderPromptTemplate(OUT_OF_BLUE_SYSTEM_PROMPT, values);
+  return renderPromptTemplate(template, values);
 }
 
 function buildOutOfBlueUserMessage(
@@ -397,7 +401,11 @@ export async function continueConversation(
   const messages: LaylaChatMessage[] = [
     {
       role: "system",
-      content: buildDreamSystemPrompt(character),
+      content: buildDreamSystemPrompt(
+        character,
+        buildDreamSystemPromptValues(character),
+        options.dreamSystemPrompt,
+      ),
     },
     ...recentHistory.map(toConversationMessage),
     elapsedMessage,
@@ -450,7 +458,11 @@ export async function scheduleOutOfBlueMessage(
   const messages: LaylaChatMessage[] = [
     {
       role: "system",
-      content: buildOutOfBlueSystemPrompt(character),
+      content: buildOutOfBlueSystemPrompt(
+        character,
+        buildOutOfBlueSystemPromptValues(character),
+        options.outOfBlueSystemPrompt,
+      ),
     },
     {
       role: "user",
