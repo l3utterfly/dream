@@ -70,22 +70,22 @@ const DREAM_PROMPT_FIELDS: Array<{
 }> = [
   {
     key: "dreamSystemPrompt",
-    label: "DREAM_SYSTEM_PROMPT",
+    label: "Dream System Prompt",
     rows: 10,
   },
   {
     key: "outOfBlueSystemPrompt",
-    label: "OUT_OF_BLUE_SYSTEM_PROMPT",
+    label: "New Conversation System Prompt",
     rows: 7,
   },
   {
     key: "readOnYouSystemPrompt",
-    label: "SYSTEM_PROMPT in readOnYou.ts",
+    label: "Impression System Prompt",
     rows: 11,
   },
   {
     key: "readOnYouUserInstruction",
-    label: "USER_INSTRUCTION in readOnYou.ts",
+    label: "Impression User Instruction",
     rows: 12,
   },
 ];
