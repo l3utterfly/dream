@@ -450,7 +450,7 @@ export function DreamSection({
               {settingsUnavailableMessage ? (
                 <p>{settingsUnavailableMessage}</p>
               ) : (
-                <p>Prompt settings save automatically.</p>
+                <p>Prompt settings save automatically per character.</p>
               )}
               <button
                 type="button"
