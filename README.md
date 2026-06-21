@@ -1,23 +1,66 @@
 # Dream
 
-Dream is a Layla mini-app built with React, TypeScript, Vite, and the `@layla-network/sdk`.
+A Layla mini-app that gives each character a living companion profile and lets
+them proactively message you outside of an active chat.
 
-Layla mini-apps are client-side web apps that run inside the Layla app's WebView. In production, SDK calls go through the bridge injected by Layla and reach the on-device model. During local development, Dream installs a mock Layla host so the app can run in a normal browser.
+Dream reads a character's card, portrait, chat history, memories, persona, and
+scheduled messages through the Layla SDK. It turns those signals into a soft
+relationship dashboard with bond scores, wellbeing, remembered moments, open
+threads, talk rhythm, impressions, and private-language clouds. When you press
+**Dream**, the character can reflect on what they know about you, continue an
+existing conversation, or send a new message out of the blue later in the day.
 
-## What's Included
+## Screenshots
 
-- React 19 + TypeScript + Vite
-- `@layla-network/sdk` for chat completions, character cards, and character images
-- A development mock host installed in `src/main.tsx`
-- `vite-plugin-singlefile` so production builds emit a self-contained HTML bundle
-- Mini-app metadata in `public/app.json`
+| Character profile and Dream action | Bond, wellbeing, and memories |
+| --- | --- |
+| <img src="./assets/1.png" alt="Dream character profile screen" width="360"> | <img src="./assets/2.png" alt="Dream bond and memories screen" width="360"> |
 
-## Requirements
+| Moments, rhythm, and reflection | Numbers and private language |
+| --- | --- |
+| <img src="./assets/3.png" alt="Dream moments and reflection screen" width="360"> | <img src="./assets/4.png" alt="Dream numbers and private language screen" width="360"> |
+
+## Features
+
+- Browse Layla characters one at a time with portrait-driven themes
+- Navigate characters with arrows, keyboard controls, and mobile swipes
+- Load character images, chat sessions, chat history, memories, personas, and scheduled messages through `@layla-network/sdk`
+- Compute warmth, depth, and relationship trend from chat sentiment
+- Track lightweight character wellbeing values for energy, hunger, and social mood
+- Save per-character wellbeing and prompt settings in Layla file storage
+- Show what the character holds in mind from top Layla memories
+- Extract open threads from recent memory sessions
+- Select emotionally resonant "moments worth keeping" from chat and memory sentiment
+- Visualize when you two usually talk with an hourly rhythm chart
+- Generate and save the character's current impression of you
+- Schedule proactive messages from the character after a Dream run
+- Customize Dream, out-of-blue, and impression prompts per character
+- Run locally with a built-in Layla mock host and sample characters
+
+## How It Works
+
+1. **Load a character.** Dream lists Layla characters, uses card artwork when
+   available, and falls back to `layla.characters.getImage` when needed.
+2. **Hydrate relationship context.** The app reads recent chat sessions,
+   messages, top memories, recent memories, personas, and scheduled messages.
+3. **Score the conversation.** Chat and memory text are passed through Layla
+   sentiment classification. Dream uses those scores to estimate bond, mood,
+   notable moments, emotional variety, and private language.
+4. **Reflect on the user.** The Reflect action asks the model to write a short
+   first-person impression from the character's point of view. The result is
+   saved back to the character card under the `impression` extension.
+5. **Dream.** A Dream run may refresh the impression first, then chooses either
+   an unscheduled existing conversation to continue or an out-of-blue message to
+   send later.
+6. **Schedule the message.** Generated messages are saved with
+   `layla.chat.scheduleChatMessage`, randomly delayed between 5 and 100 hours.
+
+## Running Locally
+
+### Requirements
 
 - Node.js 20 or newer
 - npm
-
-## Getting Started
 
 Install dependencies:
 
@@ -25,121 +68,20 @@ Install dependencies:
 npm install
 ```
 
-Start the local dev server:
+Start Vite:
 
 ```bash
 npm run dev
 ```
 
-Build the mini-app:
+During local development, `src/main.tsx` installs a Layla mock host using
+`src/mockLaylaCharacters.ts`. The mock provides sample characters, portraits,
+personas, memories, and scheduled-message storage so the interface can run in a
+normal browser.
 
-```bash
-npm run build
-```
-
-Preview the production build:
-
-```bash
-npm run preview
-```
-
-Run linting:
-
-```bash
-npm run lint
-```
-
-## Project Structure
-
-```text
-.
-+-- public/
-|   +-- app.json
-|   +-- icon.png
-|   +-- thumbnail.jpg
-+-- src/
-|   +-- assets/
-|   |   +-- hero.png
-|   +-- App.css
-|   +-- App.tsx
-|   +-- index.css
-|   +-- main.tsx
-+-- index.html
-+-- package.json
-+-- vite.config.ts
-```
-
-## Mini-App Metadata
-
-Edit `public/app.json` to customize how the mini-app appears in Layla:
-
-```json
-{
-  "title": "Dream",
-  "tagline": "Characters have thoughts outside of chatting.",
-  "description": "Installing Dream makes characters have thoughts outside of chatting.",
-  "iconUri": "icon.png",
-  "backgroundImgUri": "thumbnail.jpg"
-}
-```
-
-The image paths are relative to `public/`.
-
-## Using the Layla SDK
-
-Create one SDK client and reuse it:
-
-```ts
-import { LaylaSDK, LaylaError } from '@layla-network/sdk'
-
-const layla = new LaylaSDK()
-```
-
-Stream chat responses by default so users can see the on-device model respond token by token:
-
-```ts
-const stream = layla.chat.completions.stream({
-  messages: [{ role: 'user', content: 'Write a short greeting.' }],
-})
-
-stream.on('content', (_delta, snapshot) => {
-  console.log(snapshot)
-})
-
-try {
-  const finalText = await stream.finalContent()
-  console.log(finalText)
-} catch (error) {
-  if (error instanceof LaylaError) {
-    console.error(error.message)
-  } else {
-    throw error
-  }
-}
-```
-
-Wire a stop button to `stream.abort()` for any interactive generation UI.
-
-## Local Development Mock
-
-The SDK bridge only exists inside the Layla WebView. In a normal browser, SDK calls need a mock host.
-
-Dream installs the mock in `src/main.tsx` during Vite development:
-
-```ts
-import { installLaylaMock } from '@layla-network/sdk'
-
-if (import.meta.env.DEV) {
-  installLaylaMock({
-    respond: (messages) =>
-      `You said: ${messages.at(-1)?.content}. Mock response from Layla.`,
-    latencyMs: 1000,
-    tokenDelayMs: 300,
-  })
-}
-```
-
-This project wires the chat mock to a local OpenAI-compatible streaming API by default. It sends raw `fetch` requests to `/v1/chat/completions` with `stream: true`; no OpenAI SDK is imported. Configure it with Vite env vars:
+Dream and Reflect model calls use an OpenAI-compatible streaming chat endpoint
+in development. By default the app calls `http://localhost:1234/v1/chat/completions`.
+You can override it with Vite environment variables:
 
 ```bash
 VITE_LAYLA_OPENAI_MOCK_ENDPOINT=http://localhost:1234/v1/chat/completions
@@ -147,25 +89,139 @@ VITE_LAYLA_OPENAI_MOCK_MODEL=local-model
 VITE_LAYLA_OPENAI_MOCK_API_KEY=
 ```
 
-Keep this guarded by `import.meta.env.DEV` so the mock is not used in the production bundle.
+Preview a production build locally:
 
-## Building for Layla
+```bash
+npm run build
+npm run preview
+```
 
-Production output is generated with:
+## Running in Layla
+
+In production, Dream creates `LaylaSDK` clients and talks to the bridge provided
+by the Layla WebView. Character listing, character images, chat history,
+sentiment classification, memory reads, persona reads, file storage, model
+completions, character updates, and scheduled messages all go through
+`@layla-network/sdk`.
+
+No model endpoint or API key is embedded in the production bundle.
+
+Create the production bundle with:
 
 ```bash
 npm run build
 ```
 
-The Vite config includes `vite-plugin-singlefile`, which helps produce WebView-friendly static output in `dist/`. The exact packaging or loading path depends on how the Layla host app consumes mini-app builds.
+The build is written to `dist/`. `vite-plugin-singlefile` bundles the app into a
+WebView-friendly static output, while Vite copies the mini-app metadata and
+artwork from `public/`.
 
-## Customizing Dream
+Layla listing metadata lives in `public/app.json`:
 
-Start with these files:
+```json
+{
+  "title": "Dream",
+  "tagline": "Characters have thoughts outside of chatting.",
+  "description": "...",
+  "iconUri": "icon.png",
+  "backgroundImgUri": "thumbnail.jpg"
+}
+```
 
-- `src/App.tsx` for the app UI and interactions
-- `src/App.css` and `src/index.css` for styling
-- `public/app.json` for title, tagline, description, and app artwork
-- `src/main.tsx` for app bootstrapping and development-only mock setup
+## Dream Settings
 
-Mini-apps run fully client-side. Do not add API keys, backend calls, or server-only code for model access; use `@layla-network/sdk` and let Layla provide the on-device bridge.
+Per-character settings are saved to `settings.json` through
+`layla.utils.saveFile`. The file stores reflection history, wellbeing values,
+and optional prompt overrides:
+
+```json
+{
+  "characters": {
+    "character-id": {
+      "reflection": {
+        "lastReflectedAt": 1719000000000,
+        "memories": "...",
+        "recentMemory": "..."
+      },
+      "howYouAreDoing": {
+        "energy": { "value": 24, "lastTapped": 1719000000000 },
+        "hungriness": { "value": 18, "lastTapped": 1719000000000 },
+        "social": { "value": 31, "lastTapped": 1719000000000 }
+      },
+      "dreamPrompts": {
+        "dreamSystemPrompt": "...",
+        "outOfBlueSystemPrompt": "...",
+        "readOnYouSystemPrompt": "...",
+        "readOnYouUserInstruction": "..."
+      }
+    }
+  }
+}
+```
+
+Prompt templates can use variables such as `{{char}}`, `{{user}}`,
+`{{persona}}`, `{{character_card}}`, `{{memories}}`, `{{emotions}}`, and
+`{{recent_memory}}`.
+
+## Project Structure
+
+```text
+.
++-- assets/                         # README and store artwork assets
++-- public/
+|   +-- app.json                    # Layla mini-app metadata
+|   +-- icon.png                    # Listing icon
+|   +-- thumbnail.jpg               # Listing background
++-- src/
+|   +-- companion-dex/
+|   |   +-- components/             # Companion dashboard UI
+|   |   +-- hooks/                  # Layla character loading and hydration
+|   |   +-- libs/                   # Dream, reflection, scoring, and selection logic
+|   |   +-- utils/                  # Theme extraction and display helpers
+|   |   +-- data.ts                 # Display defaults
+|   |   +-- types.ts
+|   +-- App.tsx                     # Top-level app component
+|   +-- CompanionDex.tsx            # Character navigation and layout shell
+|   +-- main.tsx                    # App bootstrap and development mock
+|   +-- mockLaylaCharacters.ts      # Demo Layla host data
+|   +-- openaiChatMockSource.ts     # Local OpenAI-compatible mock responder
++-- package.json
++-- vite.config.ts
+```
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Start the local Vite server |
+| `npm run build` | Type-check and create the production build |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run ESLint |
+
+## Tech Stack
+
+- React 19
+- TypeScript
+- Vite
+- `@layla-network/sdk`
+- `vite-plugin-singlefile`
+- `extract-colors`
+- `d3-cloud`
+- `compromise`
+- `lucide-react`
+
+## Layla App
+
+Visit the official Layla website: https://www.layla-network.ai/
+
+Download the Layla app:
+
+<p>
+  <a href="https://play.google.com/store/apps/details?id=com.layla">
+    <img src="./assets/google_badge.png" alt="Get it on Google Play" height="60">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://apps.apple.com/us/app/layla/id6456886656">
+    <img src="./assets/apple_badge.png" alt="Download on the App Store" height="60">
+  </a>
+</p>
