@@ -39,8 +39,22 @@ interface CharacterSettings {
   dreamPrompts?: DreamPromptSettings;
 }
 
+export type DreamFrequency = "nightly" | "three-days" | "weekly";
+
+const DREAM_FREQUENCIES: readonly DreamFrequency[] = [
+  "nightly",
+  "three-days",
+  "weekly",
+];
+
+export interface DreamAutomationSettings {
+  frequency?: DreamFrequency;
+  characterIds?: string[];
+}
+
 export interface CompanionDexSettings {
   characters?: Record<string, CharacterSettings>;
+  dream?: DreamAutomationSettings;
 }
 
 export interface SettingsState {
@@ -72,6 +86,25 @@ function utf8ToBase64(value: string) {
   return btoa(binary);
 }
 
+function parseDreamSettings(value: unknown): DreamAutomationSettings | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const dream = value as DreamAutomationSettings;
+  const frequency = DREAM_FREQUENCIES.includes(dream.frequency as DreamFrequency)
+    ? dream.frequency
+    : undefined;
+  const characterIds = Array.isArray(dream.characterIds)
+    ? dream.characterIds.filter((id): id is string => typeof id === "string")
+    : undefined;
+
+  if (frequency === undefined && characterIds === undefined) return undefined;
+
+  return {
+    ...(frequency ? { frequency } : {}),
+    ...(characterIds ? { characterIds } : {}),
+  };
+}
+
 function parseSettings(value: string): CompanionDexSettings {
   const parsed: unknown = JSON.parse(value);
 
@@ -82,9 +115,11 @@ function parseSettings(value: string): CompanionDexSettings {
     settings.characters && typeof settings.characters === "object"
       ? settings.characters
       : undefined;
+  const dream = parseDreamSettings(settings.dream);
 
   return {
     ...(characters ? { characters } : {}),
+    ...(dream ? { dream } : {}),
   };
 }
 
@@ -137,6 +172,20 @@ export function queueSaveSettings(settings: CompanionDexSettings) {
 
 export function saveSettingsInBackground(settings: CompanionDexSettings) {
   void queueSaveSettings(settings).catch(() => undefined);
+}
+
+export function dreamAutomationSettings(settings: CompanionDexSettings) {
+  return settings.dream;
+}
+
+export function withDreamAutomationSettings(
+  settings: CompanionDexSettings,
+  dream: DreamAutomationSettings,
+): CompanionDexSettings {
+  return {
+    ...settings,
+    dream,
+  };
 }
 
 export function withCharacterDreamPromptSettings(

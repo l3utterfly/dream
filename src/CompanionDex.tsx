@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, TouchEvent } from "react";
 import { CompanionBackground } from "./companion-dex/components/CompanionBackground";
 import { CompanionControls } from "./companion-dex/components/CompanionControls";
+import { DreamSettingsModal } from "./companion-dex/components/DreamSettingsModal";
 import { StatsPanel } from "./companion-dex/components/StatsPanel";
 import { EMPTY_THEME } from "./companion-dex/data";
 import { useLaylaCompanions } from "./companion-dex/hooks/useLaylaCompanions";
@@ -159,6 +160,7 @@ export default function CompanionDex() {
   if (!character) {
     return (
       <div className="companion-dex" style={companionDexVars(theme)}>
+        <DreamSettingsModal />
         <div className="cd-scroll">
           <div className="cd-top">
             <div className="cd-brand">
@@ -187,6 +189,7 @@ export default function CompanionDex() {
 
   return (
     <div className="companion-dex" style={companionDexVars(theme)} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <DreamSettingsModal />
       <CompanionBackground
         character={character}
         theme={theme}
