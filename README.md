@@ -3,6 +3,10 @@
 A Layla mini-app that gives each character a living companion profile and lets
 them proactively message you outside of an active chat.
 
+For a code-level walkthrough of the architecture, data hydration pipeline,
+relationship metrics, reflection flow, scheduling logic, and Layla SDK usage,
+read the [technical deep dive](docs/TECHNICAL_DEEP_DIVE.md).
+
 Dream reads a character's card, portrait, chat history, memories, persona, and
 scheduled messages through the Layla SDK. It turns those signals into a soft
 relationship dashboard with bond scores, wellbeing, remembered moments, open

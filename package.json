@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build --config vite.task.config.ts",
+    "build:task": "vite build --config vite.task.config.ts",
+    "verify:task": "node scripts/verify-task.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

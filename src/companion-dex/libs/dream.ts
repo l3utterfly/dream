@@ -1,21 +1,31 @@
-import LaylaSDK, {
-  type LaylaCharacter,
-  type LaylaChatHistoryEntry,
-  type LaylaChatMessage,
-  type LaylaScheduledChatMessage,
+import type LaylaSDK from "@layla-network/sdk";
+import type {
+  LaylaCharacter,
+  LaylaChatHistoryEntry,
+  LaylaChatMessage,
+  LaylaScheduledChatMessage,
 } from "@layla-network/sdk";
 import type { Character } from "../types";
 import { humaniseDuration } from "../utils/misc";
-import { getEmotions } from "./readOnYou";
+import { getEmotions } from "./character-emotions";
+import {
+  DREAM_SYSTEM_PROMPT,
+  OUT_OF_BLUE_SYSTEM_PROMPT,
+  OUT_OF_BLUE_USER_INSTRUCTION,
+} from "./dream-prompts";
+
+export {
+  DREAM_SYSTEM_PROMPT,
+  OUT_OF_BLUE_SYSTEM_PROMPT,
+  OUT_OF_BLUE_USER_INSTRUCTION,
+} from "./dream-prompts";
 
 const MIN_DREAM_DELAY_HOURS = 5;
 const MAX_DREAM_DELAY_HOURS = 100;
 const HOUR_MS = 60 * 60 * 1000;
 
-const defaultLayla = new LaylaSDK();
-
 export interface ContinueConversationOptions {
-  layla?: LaylaSDK;
+  layla: LaylaSDK;
   now?: number;
   random?: () => number;
   delayHours?: number;
@@ -64,6 +74,8 @@ export interface DreamSystemPromptValues extends Record<string, string> {
 export interface OutOfBlueSystemPromptValues extends Record<string, string> {
   char: string;
   character_card: string;
+  user: string;
+  persona: string;
 }
 
 export interface OutOfBlueUserPromptValues extends Record<string, string> {
@@ -72,38 +84,6 @@ export interface OutOfBlueUserPromptValues extends Record<string, string> {
   moments: string;
   impression: string;
 }
-
-export const DREAM_SYSTEM_PROMPT = `You ARE {{char}}.
-
-You are writing the next scheduled chat message from {{char}} to {{user}}.
-Stay fully in character. Use {{char}}'s voice, personality, relationship context, and emotional continuity.
-Do not mention that you are an AI, a model, a scheduled message, or that you were given instructions.
-Reply with only the message {{char}} should send. Do not include labels, narration, analysis, or quotation marks.
-
-{{user}} INFORMATION
-{{persona}}
-
-CHARACTER CARD
-{{character_card}}
-Current emotions: {{emotions}}`;
-
-export const OUT_OF_BLUE_SYSTEM_PROMPT = `You are {{char}}.
-
-CHARACTER CARD
-{{character_card}}
-
-The user will ask you to write a message from the perspective of this character based on what you know about {{user}}.
-Write in {{char}}'s voice and perspective. Reply only with the message {{char}} would send.`;
-
-export const OUT_OF_BLUE_USER_INSTRUCTION = `MOMENTS WORTH KEEPING
-{{moments}}
-
-CURRENT IMPRESSION OF {{user}}
-{{impression}}
-
-{{char}}'s current emotions: {{emotions}}
-
-Write a message {{char}} sends to {{user}} out of the blue. It should feel natural, specific to what {{char}} knows, and like something {{char}} chose to send. Reply only with the message.`;
 
 function cleanPromptValue(value: string | undefined | null) {
   return value?.trim().replace(/\s+/g, " ") ?? "";
@@ -170,6 +150,12 @@ export function buildOutOfBlueSystemPromptValues(
   return {
     char: name,
     character_card: details || `Name: ${name}`,
+    user: character.persona?.name
+      ? cleanPromptValue(character.persona.name)
+      : "user",
+    persona: character.persona?.description
+      ? cleanPromptValue(character.persona.description)
+      : "",
     emotions,
   };
 }
@@ -377,9 +363,9 @@ export function selectRandomDreamCandidate(
 export async function continueConversation(
   chatHistory: LaylaChatHistoryEntry[],
   character: Character,
-  options: ContinueConversationOptions = {},
+  options: ContinueConversationOptions,
 ): Promise<ContinueConversationResult> {
-  const layla = options.layla ?? defaultLayla;
+  const layla = options.layla;
   const now = options.now ?? Date.now();
   const delayHours = options.delayHours ?? randomDelayHours(options.random ?? Math.random);
   const delayMs = delayHours * HOUR_MS;
@@ -448,9 +434,9 @@ export async function continueConversation(
 
 export async function scheduleOutOfBlueMessage(
   character: Character,
-  options: ContinueConversationOptions = {},
+  options: ContinueConversationOptions,
 ): Promise<OutOfBlueMessageResult> {
-  const layla = options.layla ?? defaultLayla;
+  const layla = options.layla;
   const laylaCharacter = character.laylaCharacter;
   const now = options.now ?? Date.now();
   const delayHours = options.delayHours ?? randomDelayHours(options.random ?? Math.random);

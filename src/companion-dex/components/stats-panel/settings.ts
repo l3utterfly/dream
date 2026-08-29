@@ -1,6 +1,12 @@
 import { LaylaBridgeUnavailableError, LaylaError } from "@layla-network/sdk";
 import type { Character } from "../../types";
+import {
+  dreamPromptOverridesForCharacter,
+  type DreamPromptSettings,
+} from "../../libs/dream-prompts";
 import { layla } from "./laylaClient";
+
+export type { DreamPromptSettings } from "../../libs/dream-prompts";
 
 const SETTINGS_FILENAME = "settings.json";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -26,13 +32,6 @@ interface CharacterVitalSettings {
 type CharacterWellbeingSettings = Partial<
   Record<(typeof VITAL_SETTINGS_KEYS)[keyof Character["vitals"]], CharacterVitalSettings>
 >;
-
-export interface DreamPromptSettings {
-  dreamSystemPrompt?: string;
-  outOfBlueSystemPrompt?: string;
-  readOnYouSystemPrompt?: string;
-  readOnYouUserInstruction?: string;
-}
 
 interface CharacterSettings {
   reflection?: CharacterReflectionSettings;
@@ -164,7 +163,7 @@ export function characterDreamPromptSettings(
   settings: CompanionDexSettings,
   characterId: string,
 ) {
-  return settings.characters?.[characterId]?.dreamPrompts;
+  return dreamPromptOverridesForCharacter(settings, characterId);
 }
 
 export function withCharacterReflectionSettings(

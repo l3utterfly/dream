@@ -7,18 +7,14 @@ import {
 } from "@layla-network/sdk";
 import { Clock, MoonStar, RotateCcw, Settings, Sparkles } from "lucide-react";
 import {
-  continueConversation,
-  DREAM_SYSTEM_PROMPT,
   dreamSelectionCandidates,
-  OUT_OF_BLUE_SYSTEM_PROMPT,
-  scheduleOutOfBlueMessage,
-  selectRandomDreamCandidate,
 } from "../../../libs/dream";
 import {
-  SYSTEM_PROMPT as READ_ON_YOU_SYSTEM_PROMPT,
-  USER_INSTRUCTION as READ_ON_YOU_USER_INSTRUCTION,
-} from "../../../libs/readOnYou";
+  resolveDreamPrompts,
+  type DreamPromptSettings,
+} from "../../../libs/dream-prompts";
 import { runReflection, type ReadOnYouPromptValues } from "../../../libs/reflect";
+import { runDream } from "../../../libs/runDream";
 import type { Character } from "../../../types";
 import { layla } from "../laylaClient";
 import {
@@ -26,7 +22,6 @@ import {
   queueSaveSettings,
   saveSettingsInBackground,
   type CompanionDexSettings,
-  type DreamPromptSettings,
   type SettingsState,
   withCharacterDreamPromptSettings,
 } from "../settings";
@@ -55,13 +50,6 @@ interface DreamState {
 }
 
 type DreamPromptSettingKey = keyof DreamPromptSettings;
-
-const DEFAULT_DREAM_PROMPTS: Required<DreamPromptSettings> = {
-  dreamSystemPrompt: DREAM_SYSTEM_PROMPT,
-  outOfBlueSystemPrompt: OUT_OF_BLUE_SYSTEM_PROMPT,
-  readOnYouSystemPrompt: READ_ON_YOU_SYSTEM_PROMPT,
-  readOnYouUserInstruction: READ_ON_YOU_USER_INSTRUCTION,
-};
 
 const DREAM_PROMPT_FIELDS: Array<{
   key: DreamPromptSettingKey;
@@ -105,24 +93,6 @@ const DREAM_TEMPLATE_ROWS = [
   ["{{emotions}}", "The character's current energy, hunger, and social state."],
   ["{{recent_memory}}", "The most recent conversation thread summary."],
 ] as const;
-
-function promptDraftsFromSettings(
-  dreamPrompts: DreamPromptSettings | undefined,
-): Required<DreamPromptSettings> {
-  return {
-    dreamSystemPrompt:
-      dreamPrompts?.dreamSystemPrompt ?? DEFAULT_DREAM_PROMPTS.dreamSystemPrompt,
-    outOfBlueSystemPrompt:
-      dreamPrompts?.outOfBlueSystemPrompt ??
-      DEFAULT_DREAM_PROMPTS.outOfBlueSystemPrompt,
-    readOnYouSystemPrompt:
-      dreamPrompts?.readOnYouSystemPrompt ??
-      DEFAULT_DREAM_PROMPTS.readOnYouSystemPrompt,
-    readOnYouUserInstruction:
-      dreamPrompts?.readOnYouUserInstruction ??
-      DEFAULT_DREAM_PROMPTS.readOnYouUserInstruction,
-  };
-}
 
 function scheduledMessagesErrorMessage(error: unknown) {
   if (error instanceof LaylaBridgeUnavailableError) {
@@ -305,7 +275,7 @@ export function DreamSection({
         : null;
   const promptDrafts = useMemo(
     () =>
-      promptDraftsFromSettings(
+      resolveDreamPrompts(
         characterDreamPromptSettings(settingsState.settings, character.id),
       ),
     [character.id, settingsState.settings],
@@ -353,41 +323,33 @@ export function DreamSection({
     });
 
     try {
-      if (canReflectBeforeDream && settingsState.status === "ready") {
-        const reflectionResult = await runReflection(character, {
-          layla,
-          settings: settingsState.settings,
-          promptValues: reflectionPromptValues,
-          promptTemplates: {
-            systemPrompt: promptDrafts.readOnYouSystemPrompt,
-            userInstruction: promptDrafts.readOnYouUserInstruction,
-          },
-          signal: controller.signal,
-          onUpdateLaylaCharacter,
-          saveSettings: queueSaveSettings,
-        });
-
-        onSettingsChange(reflectionResult.nextSettings);
-      }
-
-      const selectedDream = selectRandomDreamCandidate(
-        character.chatHistory,
+      const { dream: dreamResult } = await runDream({
+        layla,
+        character,
         scheduledMessages,
-        character.id,
-      );
+        prompts: promptDrafts,
+        signal: controller.signal,
+        beforeDream:
+          canReflectBeforeDream && settingsState.status === "ready"
+            ? async () => {
+                const reflectionResult = await runReflection(character, {
+                  layla,
+                  settings: settingsState.settings,
+                  promptValues: reflectionPromptValues,
+                  promptTemplates: {
+                    systemPrompt: promptDrafts.readOnYouSystemPrompt,
+                    userInstruction: promptDrafts.readOnYouUserInstruction,
+                  },
+                  signal: controller.signal,
+                  onUpdateLaylaCharacter,
+                  saveSettings: queueSaveSettings,
+                });
 
-      const dreamResult =
-        selectedDream.kind === "continue"
-          ? await continueConversation(selectedDream.messages, character, {
-              layla,
-              signal: controller.signal,
-              dreamSystemPrompt: promptDrafts.dreamSystemPrompt,
-            })
-          : await scheduleOutOfBlueMessage(character, {
-              layla,
-              signal: controller.signal,
-              outOfBlueSystemPrompt: promptDrafts.outOfBlueSystemPrompt,
-            });
+                onSettingsChange(reflectionResult.nextSettings);
+                return reflectionResult;
+              }
+            : undefined,
+      });
 
       setScheduledMessagesState({
         characterId: character.id,

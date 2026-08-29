@@ -2,6 +2,13 @@ import { selectMomentsWorthKeeping } from "./selectMomentsWorthKeeping";
 import type { Character } from "../types";
 import type { LaylaChatMessage } from "@layla-network/sdk";
 import { humaniseDuration } from "../utils/misc";
+import { getEmotions } from "./character-emotions";
+import {
+  READ_ON_YOU_SYSTEM_PROMPT,
+  READ_ON_YOU_USER_INSTRUCTION,
+} from "./dream-prompts";
+
+export { getEmotions } from "./character-emotions";
 
 export type ReadOnYouStage = "occasionally chatting" | "frequently chatting" | "always chatting";
 
@@ -150,22 +157,6 @@ export function getMemories(character: Character) {
   return summaries.map((summary) => `- ${summary}`).join("\n");
 }
 
-export function getEmotions(character: Character) {
-  let e = "Bored";
-  if (character.vitals.energy < 30) e = "Sleepy";
-  else if (character.vitals.energy > 70) e = "Energetic";
-
-  let f = "Peckish";
-  if (character.vitals.fed < 30) f = "Hungry";
-  else if (character.vitals.fed > 70) f = "Fed";
-
-  let s = "Content";
-  if (character.vitals.social < 30) s = "Lonely";
-  else if (character.vitals.social > 70) s = "Warm";
-
-  return `${e}, ${f}, ${s}`;
-}
-
 export function getRecentMemory(character: Character) {
   const threads = character.threads.map(cleanPromptValue).filter(Boolean);
 
@@ -174,52 +165,8 @@ export function getRecentMemory(character: Character) {
   return threads[0];
 }
 
-export const SYSTEM_PROMPT = `You are to write an impression of {{user}} from {{char}}'s point of view.
-
-WHAT YOU KNOW ABOUT {{user}}
-{{persona}}
-
-VOICE
-- Inhabit {{char}}'s personality and register (given below). It must sound like {{char}}, not a neutral assistant.
-
-GROUNDING — the most important rule
-- Invent nothing: no facts, events, names, or feelings the user never showed.
-- One true, specific line beats three vague flattering ones.
-
-CONFIDENCE — obey the STAGE
-- forming: barely know them; tentative, first-impressions only.
-- warming: a real pattern is emerging; cautiously confident.
-- settled: a stable read; confident, may reference shared history.
-Never sound more certain than the stage allows.
-
-CONTINUITY
-- You are given a PREVIOUS READ. Treat it as a starting point that may now be
-  outdated, NOT a template. Keep what the current evidence still supports, drop
-  what it doesn't, and let the read move when the evidence has moved.
-- Do not merely reword the previous read.`;
-
-export const USER_INSTRUCTION = `CHARACTER
-Name: {{char}}
-Description: {{description}}
-Personality: {{personality}}
-
-STAGE
-Current: {{stage}}
-Time together: {{time_together}}
-{{warmth_and_depth}}
-
-PREVIOUS IMPRESSION  (may be outdated — revise against the evidence below)
-{{previous_impression}}
-
-Moments that stood out:
-{{memories}}
-
-Current emotions: {{emotions}}
-
-Recent exchange (for texture, optional):
-{{recent_memory}}
-
-Write a concise impression of {{user}} from {{char}}'s point of view, following the SYSTEM instructions. Write in the first person, as if you are {{char}}. Only write a short paragraph — 2-3 sentences — that captures your current impression of {{user}} based on your shared history so far.`;
+export const SYSTEM_PROMPT = READ_ON_YOU_SYSTEM_PROMPT;
+export const USER_INSTRUCTION = READ_ON_YOU_USER_INSTRUCTION;
 
 function renderPromptTemplate(template: string, values: Record<string, string>) {
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, key: string) => values[key.trim()] ?? "");

@@ -11,7 +11,7 @@ on:
       - 'public/**'
       - 'src/**'
       - 'tsconfig*.json'
-      - 'vite.config.ts'
+      - 'vite*.config.ts'
 
 permissions:
   contents: write # create releases + upload assets
@@ -49,7 +49,7 @@ jobs:
 
       - name: Build
         if: steps.check.outputs.exists == 'false'
-        run: npm run build # tsc -b && vite build -> dist/
+        run: npm run build # type-check + build index.html and generated task.js
 
       - name: Package assets
         if: steps.check.outputs.exists == 'false'
