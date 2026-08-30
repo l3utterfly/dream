@@ -65,7 +65,7 @@ function saveErrorMessage(error: unknown) {
 }
 
 export function DreamSettingsModal() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const [characters, setCharacters] = useState<DreamCharacter[]>([]);
   const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
   const [characterError, setCharacterError] = useState<string | null>(null);
