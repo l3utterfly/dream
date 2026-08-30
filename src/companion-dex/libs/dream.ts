@@ -243,6 +243,15 @@ function hasScheduledOutOfBlueMessage(
   );
 }
 
+function hasScheduledMessage(
+  scheduledMessages: LaylaScheduledChatMessage[],
+  characterId: string,
+) {
+  return scheduledMessages.some(
+    (message) => message.character_id === characterId,
+  );
+}
+
 function recentHistoryEndingWithCharacter(chatHistory: LaylaChatHistoryEntry[]) {
   const conversationHistory = [...chatHistory]
     .filter(
@@ -321,6 +330,12 @@ export function dreamSelectionCandidates(
   scheduledMessages: LaylaScheduledChatMessage[],
   characterId: string,
 ): DreamSelection[] {
+  // Dreaming is a no-op once the character already has any scheduled
+  // (still unread) message. Only offer candidates when nothing is queued.
+  if (hasScheduledMessage(scheduledMessages, characterId)) {
+    return [];
+  }
+
   const candidates: DreamSelection[] = dreamSessionCandidates(
     chatHistory,
     scheduledMessages,

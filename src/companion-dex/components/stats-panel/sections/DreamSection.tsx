@@ -263,6 +263,8 @@ export function DreamSection({
     dreamTitle = scheduledMessagesError ?? "Scheduled messages unavailable";
   } else if (!isScheduleReady) {
     dreamTitle = "Checking scheduled messages";
+  } else if (scheduledCount > 0) {
+    dreamTitle = "A message is already scheduled";
   } else if (dreamCandidateCount === 0) {
     dreamTitle = "No unscheduled conversation sessions";
   }

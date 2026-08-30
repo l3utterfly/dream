@@ -19,6 +19,16 @@ const DREAM_TASK_MEMORY_LIMIT = 50;
 const DREAM_TASK_DAY_MS = 24 * 60 * 60 * 1000;
 const DREAM_TASK_SETTINGS_FILENAME = "settings.json";
 
+// How far ahead a scheduled dream may land, per configured frequency. The lower
+// bound is always one hour, so a dream never arrives sooner than that.
+const DREAM_TASK_MIN_DELAY_HOURS = 1;
+const DREAM_TASK_FREQUENCY_MAX_HOURS = {
+  nightly: 24,
+  "three-days": 3 * 24,
+  weekly: 7 * 24,
+};
+const DREAM_TASK_DEFAULT_FREQUENCY = "three-days";
+
 function dreamTaskClean(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 }
@@ -35,19 +45,31 @@ function dreamTaskTimestampMs(timestamp) {
   return Math.abs(timestamp) < 1000000000000 ? timestamp * 1000 : timestamp;
 }
 
-function dreamTaskRandomIndex(length) {
-  return Math.min(length - 1, Math.max(0, Math.floor(Math.random() * length)));
+function dreamTaskAutomationSettings(settings) {
+  const dream = settings.dream;
+  return dream && typeof dream === "object" ? dream : {};
 }
 
-function dreamTaskShuffle(values) {
-  const shuffled = values.slice();
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = dreamTaskRandomIndex(index + 1);
-    const value = shuffled[index];
-    shuffled[index] = shuffled[swapIndex];
-    shuffled[swapIndex] = value;
-  }
-  return shuffled;
+function dreamTaskAllowedCharacterIds(automation) {
+  return new Set(
+    Array.isArray(automation.characterIds)
+      ? automation.characterIds.filter(function (id) {
+          return typeof id === "string";
+        })
+      : [],
+  );
+}
+
+function dreamTaskMaxDelayHours(frequency) {
+  return (
+    DREAM_TASK_FREQUENCY_MAX_HOURS[frequency] ||
+    DREAM_TASK_FREQUENCY_MAX_HOURS[DREAM_TASK_DEFAULT_FREQUENCY]
+  );
+}
+
+function dreamTaskRandomDelayHours(maxHours) {
+  const span = Math.max(0, maxHours - DREAM_TASK_MIN_DELAY_HOURS);
+  return DREAM_TASK_MIN_DELAY_HOURS + Math.random() * span;
 }
 
 function dreamTaskRender(template, values) {
@@ -398,6 +420,9 @@ async function dreamTaskMaybeReflect(context, settings, prompts, now) {
 
   const memoryLines = memories.map(dreamTaskMemoryText).filter(Boolean);
   if (memoryLines.length === 0 || context.history.length === 0) {
+    console.info(
+      `Dream skipping reflection for ${context.name}: not enough memories or history yet.`,
+    );
     return { settings, reflected: false };
   }
 
@@ -418,9 +443,15 @@ async function dreamTaskMaybeReflect(context, settings, prompts, now) {
     previous.recentMemory === recentMemory ||
     !cooldownElapsed
   ) {
+    console.info(
+      `Dream skipping reflection for ${context.name}: ${
+        !cooldownElapsed ? "reflected within the last day" : "no new memories since last reflection"
+      }.`,
+    );
     return { settings, reflected: false };
   }
 
+  console.info(`Dream reflecting on ${context.name}'s memories to refresh their impression.`);
   const data = context.character.data.data;
   const values = {
     user: context.userName,
@@ -490,87 +521,155 @@ console.info("Dream background task starting.");
 
 (async function () {
   const now = Date.now();
-  const settings = await dreamTaskLoadSettings();
-  const scheduledMessages = await layla.chat.getScheduledChatMessages();
-  const characters = dreamTaskShuffle(await dreamTaskListCharacters());
-  if (characters.length === 0) {
-    return { status: "idle", message: "Dream found no characters." };
+  const settingsStart = Date.now();
+  let settings = await dreamTaskLoadSettings();
+  const automation = dreamTaskAutomationSettings(settings);
+  const allowedIds = dreamTaskAllowedCharacterIds(automation);
+  const frequency = automation.frequency || DREAM_TASK_DEFAULT_FREQUENCY;
+  console.info(
+    `Dream read settings in ${Date.now() - settingsStart}ms: frequency "${frequency}", ${allowedIds.size} character(s) allowed to dream.`,
+  );
+
+  if (allowedIds.size === 0) {
+    console.info(
+      "Dream is idle: no characters are enabled for automatic dreaming.",
+    );
+    return {
+      status: "idle",
+      message: "Dream has no characters enabled for automatic dreaming.",
+    };
   }
 
-  let selected = null;
+  const maxDelayHours = dreamTaskMaxDelayHours(automation.frequency);
+  let scheduledMessages = await layla.chat.getScheduledChatMessages();
+  const characters = await dreamTaskListCharacters();
+  console.info(
+    `Dream loaded ${characters.length} character(s) and ${scheduledMessages.length} existing scheduled message(s); dreams will land within 1-${maxDelayHours}h.`,
+  );
+
+  const scheduled = [];
+  const skipped = [];
   const characterErrors = [];
+
   for (const character of characters) {
+    if (!allowedIds.has(character.id)) continue;
+
+    const name = dreamTaskCharacterName(character);
+    console.info(`Dream evaluating ${name} (${character.id}).`);
     try {
       const history = await dreamTaskLoadHistory(character.id);
+      console.info(
+        `Dream loaded ${history.length} history entr${history.length === 1 ? "y" : "ies"} for ${name}.`,
+      );
+      // Scheduling is a no-op once the character already has a scheduled
+      // (still unread) message, or when there is nothing to dream about yet.
       const candidates = dreamSelectionCandidates(
         history,
         scheduledMessages,
         character.id,
       );
-      if (candidates.length === 0) continue;
-      selected = {
+      if (candidates.length === 0) {
+        const alreadyScheduled = scheduledMessages.filter(
+          (message) => message.character_id === character.id,
+        ).length;
+        const reason =
+          alreadyScheduled > 0
+            ? `already has ${alreadyScheduled} scheduled message(s)`
+            : "has no unscheduled conversation to dream about";
+        console.info(`Dream skipping ${name}: ${reason}.`);
+        skipped.push({ characterId: character.id, character: name, reason });
+        continue;
+      }
+      console.info(
+        `Dream found ${candidates.length} dream option(s) for ${name}.`,
+      );
+
+      let persona = null;
+      try {
+        persona = await layla.personas.get(character.id);
+      } catch (error) {
+        console.warn(
+          `Dream could not load ${name}'s persona; using defaults.`,
+          error,
+        );
+      }
+      const prompts = resolveDreamPrompts(
+        dreamPromptOverridesForCharacter(settings, character.id),
+      );
+      const context = {
         character,
         history,
+        name,
+        persona,
+        userName: dreamTaskClean(persona && persona.name) || "user",
+        emotions: dreamTaskEmotions(settings, character.id, now),
       };
-      break;
+      console.info(
+        `Dream context for ${name}: user "${context.userName}", emotions ${context.emotions}.`,
+      );
+      const taskCharacter = dreamTaskToCharacter(context, settings, now);
+      const delayHours = dreamTaskRandomDelayHours(maxDelayHours);
+      console.info(
+        `Dream will schedule ${name}'s message in ${delayHours.toFixed(1)}h.`,
+      );
+      const { dream: result, beforeDreamResult: reflection } = await runDream({
+        layla,
+        character: taskCharacter,
+        scheduledMessages,
+        prompts,
+        now,
+        delayHours,
+        beforeDream: () =>
+          dreamTaskMaybeReflect(context, settings, prompts, now),
+      });
+
+      // Carry any reflection settings update forward so the next character
+      // builds on the freshly saved state instead of clobbering it.
+      if (reflection && reflection.settings) {
+        settings = reflection.settings;
+      }
+      // Track the new scheduled message so it counts as "already scheduled"
+      // for the rest of this run.
+      scheduledMessages = scheduledMessages.concat([result.scheduledMessage]);
+
+      console.info(
+        `Dream scheduled a ${result.kind} message from ${name} in ${result.delayHours} hours (reflected: ${reflection?.reflected ?? false}).`,
+      );
+      scheduled.push({
+        character: name,
+        characterId: character.id,
+        kind: result.kind,
+        sessionId: result.scheduledMessage.session_id,
+        scheduledAt: result.scheduledAt,
+        delayHours: result.delayHours,
+        reflected: reflection?.reflected ?? false,
+        message: result.response,
+      });
     } catch (error) {
-      const name = dreamTaskCharacterName(character);
       const message = error && error.message ? error.message : String(error);
       characterErrors.push(`${name}: ${message}`);
       console.warn(`Dream skipped ${name}: ${message}`);
     }
   }
 
-  if (!selected) {
+  console.info(
+    `Dream run complete: scheduled ${scheduled.length}, skipped ${skipped.length}, errored ${characterErrors.length}.`,
+  );
+
+  if (scheduled.length === 0) {
     return {
       status: "idle",
-      message: "Dream found no unscheduled conversation options.",
+      message: "Dream scheduled no new messages.",
+      skipped,
       skippedErrors: characterErrors,
     };
   }
 
-  const character = selected.character;
-  const name = dreamTaskCharacterName(character);
-  let persona = null;
-  try {
-    persona = await layla.personas.get(character.id);
-  } catch (error) {
-    console.warn(`Dream could not load ${name}'s persona; using defaults.`, error);
-  }
-  const prompts = resolveDreamPrompts(
-    dreamPromptOverridesForCharacter(settings, character.id),
-  );
-  const context = {
-    character,
-    history: selected.history,
-    name,
-    persona,
-    userName: dreamTaskClean(persona && persona.name) || "user",
-    emotions: dreamTaskEmotions(settings, character.id, now),
-  };
-  const taskCharacter = dreamTaskToCharacter(context, settings, now);
-  const { dream: result, beforeDreamResult: reflection } = await runDream({
-    layla,
-    character: taskCharacter,
-    scheduledMessages,
-    prompts,
-    now,
-    beforeDream: () =>
-      dreamTaskMaybeReflect(context, settings, prompts, now),
-  });
-
-  console.info(
-    `Dream scheduled a ${result.kind} message from ${name} in ${result.delayHours} hours.`,
-  );
   return {
     status: "scheduled",
-    character: name,
-    characterId: character.id,
-    kind: result.kind,
-    sessionId: result.scheduledMessage.session_id,
-    scheduledAt: result.scheduledAt,
-    delayHours: result.delayHours,
-    reflected: reflection?.reflected ?? false,
-    message: result.response,
+    scheduledCount: scheduled.length,
+    scheduled,
+    skipped,
+    skippedErrors: characterErrors,
   };
 })();
