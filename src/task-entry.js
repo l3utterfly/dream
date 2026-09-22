@@ -1,4 +1,5 @@
 import { dreamSelectionCandidates } from "./companion-dex/libs/dream";
+import { characterAllowsContinuingConversations } from "./companion-dex/libs/dream-options";
 import {
   dreamPromptOverridesForCharacter,
   resolveDreamPrompts,
@@ -561,12 +562,19 @@ console.info("Dream background task starting.");
       console.info(
         `Dream loaded ${history.length} history entr${history.length === 1 ? "y" : "ies"} for ${name}.`,
       );
+      // Characters can be set to never pick up an old conversation, which
+      // leaves only the out-of-the-blue option below.
+      const allowContinueConversations = characterAllowsContinuingConversations(
+        settings,
+        character.id,
+      );
       // Scheduling is a no-op once the character already has a scheduled
       // (still unread) message, or when there is nothing to dream about yet.
       const candidates = dreamSelectionCandidates(
         history,
         scheduledMessages,
         character.id,
+        { allowContinueConversations },
       );
       if (candidates.length === 0) {
         const alreadyScheduled = scheduledMessages.filter(
@@ -617,6 +625,7 @@ console.info("Dream background task starting.");
         character: taskCharacter,
         scheduledMessages,
         prompts,
+        allowContinueConversations,
         now,
         delayHours,
         beforeDream: () =>

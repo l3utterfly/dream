@@ -24,6 +24,9 @@ export interface RunDreamOptions<TBeforeDream = void> {
   now?: number;
   random?: () => number;
   delayHours?: number;
+  // Defaults to true. False forces the out-of-the-blue path for characters set
+  // to never continue old conversations.
+  allowContinueConversations?: boolean;
 }
 
 export interface RunDreamWorkflowResult<TBeforeDream> {
@@ -41,6 +44,7 @@ export async function runDream<TBeforeDream = void>({
   now,
   random,
   delayHours,
+  allowContinueConversations,
 }: RunDreamOptions<TBeforeDream>): Promise<RunDreamWorkflowResult<TBeforeDream>> {
   const beforeDreamResult = await beforeDream?.();
   const selectedDream = selectRandomDreamCandidate(
@@ -48,6 +52,7 @@ export async function runDream<TBeforeDream = void>({
     scheduledMessages,
     character.id,
     random,
+    { allowContinueConversations },
   );
   const commonOptions = {
     layla,

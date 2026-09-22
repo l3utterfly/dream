@@ -26,10 +26,13 @@ const character = {
   },
 };
 
-function settingsDataUri({ dreamPrompts, dream }) {
+function settingsDataUri({ dreamPrompts, dream, dreamOptions }) {
   const settings = {
     characters: {
-      [character.id]: { dreamPrompts },
+      [character.id]: {
+        dreamPrompts,
+        ...(dreamOptions ? { dreamOptions } : {}),
+      },
     },
     ...(dream ? { dream } : {}),
   };
@@ -42,6 +45,7 @@ function settingsDataUri({ dreamPrompts, dream }) {
 async function executeTask({
   dreamPrompts,
   dream,
+  dreamOptions,
   scheduledMessages,
   sessions,
   history,
@@ -96,7 +100,7 @@ async function executeTask({
     },
     utils: {
       readFile: async () => ({
-        content_base64: settingsDataUri({ dreamPrompts, dream }),
+        content_base64: settingsDataUri({ dreamPrompts, dream, dreamOptions }),
       }),
       saveFile: async () => ({ success: true }),
     },
@@ -298,5 +302,78 @@ const noAutomation = await executeTask({
 assert.equal(noAutomation.result.status, "idle");
 assert.equal(noAutomation.scheduledPayloads.length, 0);
 assert.equal(noAutomation.completionRequests.length, 0);
+
+// The same character with "do not continue old conversations" set skips the
+// continuation candidate entirely and sends an out-of-blue message instead,
+// even though an unscheduled session is available and random() picks index 0.
+const noContinuations = await executeTask({
+  dreamPrompts: {
+    dreamSystemPrompt: "CONTINUE {{char}}",
+    outOfBlueSystemPrompt: "OUT OF BLUE {{char}} FOR {{user}}",
+    readOnYouSystemPrompt: "REFLECT SYSTEM",
+    readOnYouUserInstruction: "REFLECT USER",
+  },
+  dream: { frequency: "three-days", characterIds: [character.id] },
+  dreamOptions: { doNotContinueConversations: true },
+  scheduledMessages: [],
+  sessions: [{ session_id: "session-1" }],
+  history: [
+    {
+      id: 1,
+      role: "assistant",
+      name: "Aria",
+      content: "Talk soon.",
+      character_id: character.id,
+      session_id: "session-1",
+      timestamp: Date.now() - 1_000,
+    },
+  ],
+  memories: [],
+  random: () => 0,
+});
+
+assert.equal(noContinuations.result.status, "scheduled");
+assert.equal(noContinuations.result.scheduled.length, 1);
+assert.equal(noContinuations.result.scheduled[0].kind, "out_of_blue");
+assert.equal(
+  noContinuations.completionRequests[0].messages[0].content,
+  "OUT OF BLUE Aria FOR Alex",
+);
+assert.equal(noContinuations.scheduledPayloads[0].session_id, null);
+
+// An explicit false is the same as the setting being absent: continuing an old
+// conversation stays available, so stored settings written before this option
+// existed keep their original behaviour.
+const continuationsStillAllowed = await executeTask({
+  dreamPrompts: {
+    dreamSystemPrompt: "CONTINUE {{char}} FOR {{user}}",
+    outOfBlueSystemPrompt: "OUT OF BLUE {{char}}",
+    readOnYouSystemPrompt: "REFLECT SYSTEM",
+    readOnYouUserInstruction: "REFLECT USER",
+  },
+  dream: { frequency: "three-days", characterIds: [character.id] },
+  dreamOptions: { doNotContinueConversations: false },
+  scheduledMessages: [],
+  sessions: [{ session_id: "session-1" }],
+  history: [
+    {
+      id: 1,
+      role: "assistant",
+      name: "Aria",
+      content: "Talk soon.",
+      character_id: character.id,
+      session_id: "session-1",
+      timestamp: Date.now() - 1_000,
+    },
+  ],
+  memories: [],
+  random: () => 0,
+});
+
+assert.equal(continuationsStillAllowed.result.scheduled[0].kind, "continue");
+assert.equal(
+  continuationsStillAllowed.scheduledPayloads[0].session_id,
+  "session-1",
+);
 
 console.info("Generated task parity checks passed.");

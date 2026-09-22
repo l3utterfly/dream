@@ -1053,6 +1053,63 @@
   outline-offset: 2px;
 }
 
+.cd-dream-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--page) 60%, transparent);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s,
+    opacity 0.2s;
+}
+
+.cd-dream-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 44%, transparent);
+}
+
+.cd-dream-option:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.cd-dream-option:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 50%, transparent);
+  outline-offset: 1px;
+}
+
+.cd-dream-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The track is a fixed 38px; without this the long label shrinks it and the
+   knob spills past the rounded edge. */
+.cd-dream-option .cd-settings-switch {
+  flex: none;
+}
+
+.cd-dream-option-copy strong {
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.cd-dream-option-copy small {
+  color: var(--ink-2);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 .cd-dream-prompt-grid {
   display: grid;
   gap: 12px;

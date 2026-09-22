@@ -66,6 +66,12 @@ export type DreamSelection =
     sessionId: null;
   };
 
+export interface DreamSelectionOptions {
+  // Defaults to true, so callers that predate the per-character
+  // "do not continue old conversations" setting behave exactly as before.
+  allowContinueConversations?: boolean;
+}
+
 export interface DreamSystemPromptValues extends Record<string, string> {
   char: string;
   character_card: string;
@@ -329,6 +335,7 @@ export function dreamSelectionCandidates(
   chatHistory: LaylaChatHistoryEntry[],
   scheduledMessages: LaylaScheduledChatMessage[],
   characterId: string,
+  options: DreamSelectionOptions = {},
 ): DreamSelection[] {
   // Dreaming is a no-op once the character already has any scheduled
   // (still unread) message. Only offer candidates when nothing is queued.
@@ -336,15 +343,20 @@ export function dreamSelectionCandidates(
     return [];
   }
 
-  const candidates: DreamSelection[] = dreamSessionCandidates(
-    chatHistory,
-    scheduledMessages,
-    characterId,
-  ).map(([sessionId, messages]) => ({
-    kind: "continue",
-    sessionId,
-    messages,
-  }));
+  // Characters set to never continue old conversations skip straight to the
+  // out-of-the-blue option below.
+  const candidates: DreamSelection[] =
+    options.allowContinueConversations === false
+      ? []
+      : dreamSessionCandidates(
+          chatHistory,
+          scheduledMessages,
+          characterId,
+        ).map(([sessionId, messages]) => ({
+          kind: "continue",
+          sessionId,
+          messages,
+        }));
 
   if (!hasScheduledOutOfBlueMessage(scheduledMessages, characterId)) {
     candidates.push({
@@ -361,11 +373,13 @@ export function selectRandomDreamCandidate(
   scheduledMessages: LaylaScheduledChatMessage[],
   characterId: string,
   random: () => number = Math.random,
+  options: DreamSelectionOptions = {},
 ) {
   const candidates = dreamSelectionCandidates(
     chatHistory,
     scheduledMessages,
     characterId,
+    options,
   );
 
   if (candidates.length === 0) {

@@ -5,7 +5,7 @@ import {
   LaylaError,
   type LaylaScheduledChatMessage,
 } from "@layla-network/sdk";
-import { Clock, MoonStar, RotateCcw, Settings, Sparkles } from "lucide-react";
+import { Check, Clock, MoonStar, RotateCcw, Settings, Sparkles } from "lucide-react";
 import {
   dreamSelectionCandidates,
 } from "../../../libs/dream";
@@ -18,11 +18,14 @@ import { runDream } from "../../../libs/runDream";
 import type { Character } from "../../../types";
 import { layla } from "../laylaClient";
 import {
+  characterCanContinueConversations,
+  characterDreamOptions,
   characterDreamPromptSettings,
   queueSaveSettings,
   saveSettingsInBackground,
   type CompanionDexSettings,
   type SettingsState,
+  withCharacterDreamOptions,
   withCharacterDreamPromptSettings,
 } from "../settings";
 import { Block } from "../../MetricSections";
@@ -240,11 +243,16 @@ export function DreamSection({
     activeDreamState?.status === "error" ? activeDreamState.error : null;
   const scheduledCount = scheduledMessages.length;
   const isScheduleReady = activeScheduleState?.status === "ready";
+  const allowContinueConversations = characterCanContinueConversations(
+    settingsState.settings,
+    character.id,
+  );
   const dreamCandidateCount = isScheduleReady
     ? dreamSelectionCandidates(
         character.chatHistory,
         scheduledMessages,
         character.id,
+        { allowContinueConversations },
       ).length
     : 0;
   const canDream =
@@ -266,7 +274,9 @@ export function DreamSection({
   } else if (scheduledCount > 0) {
     dreamTitle = "A message is already scheduled";
   } else if (dreamCandidateCount === 0) {
-    dreamTitle = "No unscheduled conversation sessions";
+    dreamTitle = allowContinueConversations
+      ? "No unscheduled conversation sessions"
+      : "Nothing to dream about right now";
   }
   const spoilerKey = scheduledMessages.map((message) => message.id).join("-");
   const settingsUnavailableMessage =
@@ -282,6 +292,21 @@ export function DreamSection({
       ),
     [character.id, settingsState.settings],
   );
+  const toggleContinueConversations = useCallback(() => {
+    if (settingsState.status !== "ready") return;
+
+    const nextSettings = withCharacterDreamOptions(
+      settingsState.settings,
+      character.id,
+      {
+        ...characterDreamOptions(settingsState.settings, character.id),
+        doNotContinueConversations: allowContinueConversations,
+      },
+    );
+
+    onSettingsChange(nextSettings);
+    saveSettingsInBackground(nextSettings);
+  }, [allowContinueConversations, character.id, onSettingsChange, settingsState]);
 
   const updatePromptDraft = useCallback(
     (key: DreamPromptSettingKey, value: string) => {
@@ -330,6 +355,7 @@ export function DreamSection({
         character,
         scheduledMessages,
         prompts: promptDrafts,
+        allowContinueConversations,
         signal: controller.signal,
         beforeDream:
           canReflectBeforeDream && settingsState.status === "ready"
@@ -380,6 +406,7 @@ export function DreamSection({
       }
     }
   }, [
+    allowContinueConversations,
     canReflectBeforeDream,
     character,
     onSettingsChange,
@@ -426,6 +453,30 @@ export function DreamSection({
                 <span>Reset</span>
               </button>
             </div>
+            <button
+              type="button"
+              className="cd-dream-option"
+              role="switch"
+              aria-checked={!allowContinueConversations}
+              disabled={settingsState.status !== "ready"}
+              onClick={toggleContinueConversations}
+            >
+              <span className="cd-dream-option-copy">
+                <strong>Do not continue old conversations</strong>
+                <small>
+                  Every dream starts a new message out of the blue instead of
+                  picking up where a past chat left off.
+                </small>
+              </span>
+              <span
+                className={`cd-settings-switch${
+                  !allowContinueConversations ? " is-on" : ""
+                }`}
+                aria-hidden="true"
+              >
+                <span>{!allowContinueConversations ? <Check size={12} /> : null}</span>
+              </span>
+            </button>
             <div className="cd-dream-prompt-grid">
               {DREAM_PROMPT_FIELDS.map((field) => (
                 <label key={field.key} className="cd-dream-prompt-field">

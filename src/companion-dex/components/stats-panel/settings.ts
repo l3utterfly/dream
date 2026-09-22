@@ -1,12 +1,18 @@
 import { LaylaBridgeUnavailableError, LaylaError } from "@layla-network/sdk";
 import type { Character } from "../../types";
 import {
+  characterAllowsContinuingConversations,
+  dreamOptionsForCharacter,
+  type CharacterDreamOptions,
+} from "../../libs/dream-options";
+import {
   dreamPromptOverridesForCharacter,
   type DreamPromptSettings,
 } from "../../libs/dream-prompts";
 import { layla } from "./laylaClient";
 
 export type { DreamPromptSettings } from "../../libs/dream-prompts";
+export type { CharacterDreamOptions } from "../../libs/dream-options";
 
 const SETTINGS_FILENAME = "settings.json";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,6 +43,7 @@ interface CharacterSettings {
   reflection?: CharacterReflectionSettings;
   howYouAreDoing?: CharacterWellbeingSettings;
   dreamPrompts?: DreamPromptSettings;
+  dreamOptions?: CharacterDreamOptions;
 }
 
 export type DreamFrequency = "nightly" | "three-days" | "weekly";
@@ -213,6 +220,40 @@ export function characterDreamPromptSettings(
   characterId: string,
 ) {
   return dreamPromptOverridesForCharacter(settings, characterId);
+}
+
+export function withCharacterDreamOptions(
+  settings: CompanionDexSettings,
+  characterId: string,
+  dreamOptions: CharacterDreamOptions,
+): CompanionDexSettings {
+  const characters = settings.characters ?? {};
+  const characterSettings = characters[characterId] ?? {};
+
+  return {
+    ...settings,
+    characters: {
+      ...characters,
+      [characterId]: {
+        ...characterSettings,
+        dreamOptions,
+      },
+    },
+  };
+}
+
+export function characterDreamOptions(
+  settings: CompanionDexSettings,
+  characterId: string,
+) {
+  return dreamOptionsForCharacter(settings, characterId);
+}
+
+export function characterCanContinueConversations(
+  settings: CompanionDexSettings,
+  characterId: string,
+) {
+  return characterAllowsContinuingConversations(settings, characterId);
 }
 
 export function withCharacterReflectionSettings(
