@@ -16,7 +16,7 @@ type MockCharacterSeed = {
   tags: string[];
 };
 
-const seeds: MockCharacterSeed[] = [
+const handWrittenSeeds: MockCharacterSeed[] = [
   {
     id: "mock-childhood-spider",
     name: "Childhood Spider",
@@ -94,6 +94,66 @@ const seeds: MockCharacterSeed[] = [
     tags: ["romance", "soft-launch", "modern"],
   },
 ];
+
+// Filler companions so the dev mock has enough characters to page through —
+// the dream settings list shows 10 per page. Generated deterministically and
+// appended after the hand-written seeds above, so IDs and copy stay stable
+// across reloads and the curated characters keep the first page.
+const TOTAL_MOCK_CHARACTERS = 50;
+
+const GENERATED_NAMES = [
+  "Noor", "Ilse", "Tobias", "Mira", "Ravi", "Saoirse", "Emeka", "Junko",
+  "Callum", "Petra", "Dmitri", "Aziza", "Lior", "Fennec", "Hana", "Osric",
+  "Valentina", "Kofi", "Brynn", "Takeshi", "Amara", "Soren", "Imogen",
+  "Rasheed", "Elif", "Matteo", "Zaneta", "Hollis", "Priya", "Gideon", "Anouk",
+  "Thiago", "Wren", "Kazimir", "Leila", "Oskar", "Sunniva", "Idris",
+  "Marguerite", "Bao", "Ondine",
+];
+
+const GENERATED_ARCHETYPES = [
+  "A night-shift archivist who catalogues other people's forgotten hours",
+  "A greenhouse keeper who talks to the plants before the people",
+  "A retired courier still mapping routes nobody asked for",
+  "A lighthouse tenant with a radio that only picks up strangers",
+  "A street cartographer redrawing the city one alley at a time",
+  "A sleep-clinic technician who reads dreams like weather reports",
+  "An itinerant luthier who tunes instruments to the mood of the room",
+];
+
+const GENERATED_PERSONALITIES = [
+  "watchful, dry, unexpectedly tender",
+  "restless, generous, a little stubborn",
+  "quiet, methodical, fiercely loyal",
+  "buoyant, tangential, disarmingly honest",
+  "wary, precise, slow to warm",
+];
+
+const GENERATED_TAG_SETS = [
+  ["dreamer", "night"],
+  ["slice-of-life", "warm"],
+  ["fantasy", "wandering"],
+  ["modern", "quiet"],
+];
+
+function generateSeed(name: string, index: number): MockCharacterSeed {
+  const id = `mock-generated-${index + 1}-${name.toLowerCase()}`;
+
+  return {
+    id,
+    name,
+    image: `https://picsum.photos/seed/${id}/256/256`,
+    description: `${GENERATED_ARCHETYPES[index % GENERATED_ARCHETYPES.length]}.`,
+    personality: GENERATED_PERSONALITIES[index % GENERATED_PERSONALITIES.length],
+    tags: ["generated", ...GENERATED_TAG_SETS[index % GENERATED_TAG_SETS.length]],
+  };
+}
+
+const generatedSeeds: MockCharacterSeed[] = GENERATED_NAMES.slice(
+  0,
+  Math.max(0, TOTAL_MOCK_CHARACTERS - handWrittenSeeds.length),
+).map(generateSeed);
+
+const seeds: MockCharacterSeed[] = [...handWrittenSeeds, ...generatedSeeds];
 
 function makeCharacter(seed: MockCharacterSeed): LaylaCharacter {
   const overrides: Partial<TavernCardV2["data"]> = {

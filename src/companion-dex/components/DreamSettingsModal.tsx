@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Clock3, MoonStar, Settings, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  MoonStar,
+  Settings,
+  Sparkles,
+  X,
+} from "lucide-react";
 import {
   LaylaAbortError,
   LaylaBridgeUnavailableError,
@@ -32,7 +41,7 @@ const FREQUENCIES: { id: DreamFrequency; title: string; detail: string }[] = [
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-const CHARACTER_PAGE_SIZE = 20;
+const CHARACTER_PAGE_SIZE = 10;
 
 function shortCharacterDetail(character: LaylaCharacter) {
   const description = character.data.data.description?.trim().replace(/\s+/g, " ");
@@ -66,7 +75,9 @@ function saveErrorMessage(error: unknown) {
 
 export function DreamSettingsModal() {
   const [isOpen, setIsOpen] = useState(true);
-  const [characters, setCharacters] = useState<DreamCharacter[]>([]);
+  const [pages, setPages] = useState<Record<number, DreamCharacter[]>>({});
+  const [page, setPage] = useState(0);
+  const [lastPage, setLastPage] = useState<number | null>(null);
   const [isLoadingCharacters, setIsLoadingCharacters] = useState(false);
   const [characterError, setCharacterError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -78,16 +89,60 @@ export function DreamSettingsModal() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const charactersRef = useRef<DreamCharacter[]>([]);
-  const didLoadAllCharactersRef = useRef(false);
+  const pagesRef = useRef<Record<number, DreamCharacter[]>>({});
   const imageRequestsRef = useRef<Set<string>>(new Set());
   const settingsRef = useRef<CompanionDexSettings>({});
-  const didInitSettingsRef = useRef(false);
+  const settingsLoadRef = useRef<Promise<void> | null>(null);
+  const settingsAbortRef = useRef<AbortController | null>(null);
   const hasStoredSelectionRef = useRef(false);
 
   useEffect(() => {
-    charactersRef.current = characters;
-  }, [characters]);
+    pagesRef.current = pages;
+  }, [pages]);
+
+  useEffect(() => () => settingsAbortRef.current?.abort(), []);
+
+  // Stored settings are read once and shared by every page fetch, so a saved
+  // selection always lands before the "first two characters" default runs.
+  const ensureSettingsLoaded = () => {
+    if (!settingsLoadRef.current) {
+      // Its own controller: the read outlives whichever page fetch started it.
+      const controller = new AbortController();
+      settingsAbortRef.current = controller;
+      settingsLoadRef.current = (async () => {
+        try {
+          const loaded = await loadPanelSettings(controller.signal);
+          settingsRef.current = loaded;
+          const dream = dreamAutomationSettings(loaded);
+          if (dream?.frequency) setFrequency(dream.frequency);
+          if (Array.isArray(dream?.characterIds)) {
+            hasStoredSelectionRef.current = true;
+            setEnabledCharacters(new Set(dream.characterIds));
+          }
+        } catch {
+          // Keep defaults if stored settings can't be read.
+        }
+      })();
+    }
+    return settingsLoadRef.current;
+  };
+
+  const patchCharacter = (
+    pageIndex: number,
+    characterId: string,
+    patch: Partial<DreamCharacter>,
+  ) => {
+    setPages((current) => {
+      const rows = current[pageIndex];
+      if (!rows) return current;
+      return {
+        ...current,
+        [pageIndex]: rows.map((character) =>
+          character.id === characterId ? { ...character, ...patch } : character,
+        ),
+      };
+    });
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -115,29 +170,14 @@ export function DreamSettingsModal() {
             .getImage(character.id, { signal: imageController.signal })
             .then((image) => {
               if (imageController.signal.aborted) return;
-
-              setCharacters((current) =>
-                current.map((currentCharacter) =>
-                  currentCharacter.id === character.id
-                    ? {
-                        ...currentCharacter,
-                        image: image ?? undefined,
-                        imageUnavailable: image === null,
-                      }
-                    : currentCharacter,
-                ),
-              );
+              patchCharacter(page, character.id, {
+                image: image ?? undefined,
+                imageUnavailable: image === null,
+              });
             })
             .catch((error: unknown) => {
               if (error instanceof LaylaAbortError) return;
-
-              setCharacters((current) =>
-                current.map((currentCharacter) =>
-                  currentCharacter.id === character.id
-                    ? { ...currentCharacter, imageUnavailable: true }
-                    : currentCharacter,
-                ),
-              );
+              patchCharacter(page, character.id, { imageUnavailable: true });
             })
             .finally(() => imageRequests.delete(character.id));
         });
@@ -146,63 +186,43 @@ export function DreamSettingsModal() {
       hydrationFrames.add(frame);
     };
 
-    hydrateImagesAfterPaint(charactersRef.current);
+    const cached = pagesRef.current[page];
+    hydrateImagesAfterPaint(cached ?? []);
 
-    setIsLoadingCharacters(!didLoadAllCharactersRef.current);
+    setIsLoadingCharacters(cached === undefined);
     setCharacterError(null);
 
     void (async () => {
-      if (!didInitSettingsRef.current) {
-        try {
-          const loaded = await loadPanelSettings(listController.signal);
-          if (listController.signal.aborted) return;
+      if (cached !== undefined) return;
 
-          settingsRef.current = loaded;
-          const dream = dreamAutomationSettings(loaded);
-          if (dream?.frequency) setFrequency(dream.frequency);
-          if (Array.isArray(dream?.characterIds)) {
-            hasStoredSelectionRef.current = true;
-            setEnabledCharacters(new Set(dream.characterIds));
-          }
-        } catch (error) {
-          if (error instanceof LaylaAbortError) return;
-          // Keep defaults if stored settings can't be read.
+      await ensureSettingsLoaded();
+      if (listController.signal.aborted) return;
+
+      // One extra row tells us whether a next page exists without a count API.
+      const fetched = await layla.characters.list(
+        page * CHARACTER_PAGE_SIZE,
+        CHARACTER_PAGE_SIZE + 1,
+        { signal: listController.signal },
+      );
+      if (listController.signal.aborted) return;
+
+      setLastPage((current) =>
+        fetched.length <= CHARACTER_PAGE_SIZE
+          ? page
+          : current === page
+            ? null
+            : current,
+      );
+
+      const rows = fetched.slice(0, CHARACTER_PAGE_SIZE).map(toDreamCharacter);
+      setPages((current) => ({ ...current, [page]: rows }));
+      setEnabledCharacters((current) => {
+        if (current.size > 0 || page > 0 || hasStoredSelectionRef.current) {
+          return current;
         }
-        didInitSettingsRef.current = true;
-      }
-
-      if (didLoadAllCharactersRef.current) return;
-
-      let offset = charactersRef.current.length;
-
-      while (!listController.signal.aborted) {
-        const page = await layla.characters.list(offset, CHARACTER_PAGE_SIZE, {
-          signal: listController.signal,
-        });
-        if (listController.signal.aborted) return;
-
-        const rows = page.map(toDreamCharacter);
-        setCharacters((current) => {
-          const knownIds = new Set(current.map((character) => character.id));
-          return [
-            ...current,
-            ...rows.filter((character) => !knownIds.has(character.id)),
-          ];
-        });
-        setEnabledCharacters((current) => {
-          if (current.size > 0 || offset > 0 || hasStoredSelectionRef.current) {
-            return current;
-          }
-          return new Set(rows.slice(0, 2).map((character) => character.id));
-        });
-        hydrateImagesAfterPaint(rows);
-
-        offset += page.length;
-        if (page.length < CHARACTER_PAGE_SIZE) {
-          didLoadAllCharactersRef.current = true;
-          return;
-        }
-      }
+        return new Set(rows.slice(0, 2).map((character) => character.id));
+      });
+      hydrateImagesAfterPaint(rows);
     })()
       .catch((error: unknown) => {
         if (error instanceof LaylaAbortError) return;
@@ -218,7 +238,7 @@ export function DreamSettingsModal() {
       hydrationFrames.forEach((frame) => cancelAnimationFrame(frame));
       imageRequests.clear();
     };
-  }, [isOpen, loadAttempt]);
+  }, [isOpen, page, loadAttempt]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -294,26 +314,16 @@ export function DreamSettingsModal() {
       .finally(() => setIsSaving(false));
   };
 
-  const markImageUnavailable = (characterId: string) => {
-    setCharacters((current) =>
-      current.map((character) =>
-        character.id === characterId
-          ? { ...character, image: undefined, imageUnavailable: true }
-          : character,
-      ),
-    );
+  const retryLoad = () => {
+    setPages({});
+    setLastPage(null);
+    setLoadAttempt((attempt) => attempt + 1);
   };
 
-  const orderedCharacters = useMemo(() => {
-    const enabled = characters.filter((character) =>
-      enabledCharacters.has(character.id),
-    );
-    const disabled = characters.filter(
-      (character) => !enabledCharacters.has(character.id),
-    );
-    return [...enabled, ...disabled];
-  }, [characters, enabledCharacters]);
-
+  const pageCharacters = pages[page] ?? [];
+  const hasPreviousPage = page > 0;
+  const hasNextPage = lastPage === null ? pageCharacters.length > 0 : page < lastPage;
+  const showPagination = hasPreviousPage || hasNextPage;
   const selectedFrequency = FREQUENCIES.find((option) => option.id === frequency);
 
   return (
@@ -375,14 +385,14 @@ export function DreamSettingsModal() {
                         <p>Select the characters who can dream on their own.</p>
                       </div>
                       <span>
-                        {isLoadingCharacters && characters.length === 0
+                        {isLoadingCharacters && pageCharacters.length === 0
                           ? "Loading…"
                           : `${enabledCharacters.size} selected`}
                       </span>
                     </div>
 
                     <div className="cd-settings-character-list">
-                      {isLoadingCharacters && characters.length === 0
+                      {isLoadingCharacters && pageCharacters.length === 0
                         ? Array.from({ length: 4 }, (_, index) => (
                             <div
                               key={index}
@@ -398,7 +408,7 @@ export function DreamSettingsModal() {
                           ))
                         : null}
 
-                      {orderedCharacters.map((character) => {
+                      {pageCharacters.map((character) => {
                         const isEnabled = enabledCharacters.has(character.id);
 
                         return (
@@ -422,7 +432,12 @@ export function DreamSettingsModal() {
                                 <img
                                   src={character.image}
                                   alt=""
-                                  onError={() => markImageUnavailable(character.id)}
+                                  onError={() =>
+                                    patchCharacter(page, character.id, {
+                                      image: undefined,
+                                      imageUnavailable: true,
+                                    })
+                                  }
                                 />
                               ) : (
                                 <span>{character.name.slice(0, 1).toUpperCase()}</span>
@@ -443,19 +458,46 @@ export function DreamSettingsModal() {
                       })}
                     </div>
 
+                    {showPagination && !characterError ? (
+                      <nav className="cd-settings-pagination" aria-label="Character pages">
+                        <button
+                          type="button"
+                          aria-label="Previous page of characters"
+                          disabled={!hasPreviousPage || isLoadingCharacters}
+                          onClick={() => setPage((current) => Math.max(0, current - 1))}
+                        >
+                          <ChevronLeft size={16} aria-hidden="true" />
+                          <span>Back</span>
+                        </button>
+                        <span aria-live="polite">
+                          {lastPage === null
+                            ? `Page ${page + 1}`
+                            : `Page ${page + 1} of ${lastPage + 1}`}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Next page of characters"
+                          disabled={!hasNextPage || isLoadingCharacters}
+                          onClick={() => setPage((current) => current + 1)}
+                        >
+                          <span>Next</span>
+                          <ChevronRight size={16} aria-hidden="true" />
+                        </button>
+                      </nav>
+                    ) : null}
+
                     {characterError ? (
                       <div className="cd-settings-character-status" role="alert">
                         <span>{characterError}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLoadAttempt((attempt) => attempt + 1)}
-                        >
+                        <button type="button" onClick={retryLoad}>
                           Try again
                         </button>
                       </div>
                     ) : null}
 
-                    {!isLoadingCharacters && !characterError && characters.length === 0 ? (
+                    {!isLoadingCharacters &&
+                    !characterError &&
+                    pageCharacters.length === 0 ? (
                       <p className="cd-settings-character-empty">
                         No Layla characters found.
                       </p>
